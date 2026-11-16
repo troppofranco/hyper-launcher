@@ -112,6 +112,11 @@ impl Paths {
             .join(format!("{}.manifest.json", safe_component(component)?)))
     }
 
+    /// Setup scaricati dall'aggiornamento automatico.
+    pub fn updates_dir(&self) -> PathBuf {
+        self.root.join("updates")
+    }
+
     pub fn instances_dir(&self) -> PathBuf {
         self.root.join("instances")
     }

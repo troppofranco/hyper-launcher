@@ -10,6 +10,7 @@ mod install;
 pub mod java;
 pub mod manifest;
 pub mod natives;
+pub mod self_update;
 pub mod version;
 
 pub use download::{DownloadStats, DownloadTask, Downloader, Progress};

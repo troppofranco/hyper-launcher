@@ -3,6 +3,7 @@
 //! `hyper-instances`, condivisa con la futura UI.
 
 mod progress;
+mod update;
 
 use std::path::PathBuf;
 
@@ -62,6 +63,9 @@ enum Command {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Aggiorna Hyper Launcher all'ultima versione pubblicata (avviene
+    /// comunque da solo a ogni avvio; disattivabile con HYPER_NO_UPDATE=1).
+    Update,
 }
 
 #[derive(Subcommand)]
@@ -124,7 +128,35 @@ async fn main() -> Result<()> {
     let config = Config::load(&paths)?;
     let app = App { paths, config };
 
+    // Aggiornamento automatico a ogni avvio. Un errore (rete assente, GitHub
+    // irraggiungibile) non deve mai impedire di usare il launcher.
+    let auto_update =
+        !matches!(cli.command, Command::Update) && std::env::var_os(update::DISABLE_ENV).is_none();
+    if auto_update {
+        match update::run(&app).await {
+            Ok(Some(build)) => {
+                println!("{}", update::installing_message(build));
+                return Ok(());
+            }
+            Ok(None) => {}
+            Err(e) => tracing::debug!(error = %e, "update check failed"),
+        }
+    }
+
     match cli.command {
+        Command::Update => match update::current_build() {
+            None => {
+                println!("Build di sviluppo: l'aggiornamento automatico è disattivato.");
+                Ok(())
+            }
+            Some(build) => {
+                match update::run(&app).await? {
+                    Some(new) => println!("{}", update::installing_message(new)),
+                    None => println!("Hyper Launcher è aggiornato (build {build})."),
+                }
+                Ok(())
+            }
+        },
         Command::Versions {
             snapshots,
             all,

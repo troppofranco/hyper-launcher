@@ -1,8 +1,8 @@
 # A ogni push su `main`: verifica (fmt, clippy, test), compila `hyper.exe`
 # in release, crea `HyperLauncher-Setup.exe` con Inno Setup e lo pubblica
-# nella release `v<versione del workspace>`. Finché la versione in
-# Cargo.toml non cambia, la stessa release viene aggiornata con il setup
-# dell'ultimo commit; cambiando versione si crea una nuova release.
+# in una nuova release `build-<N>` (N = numero progressivo del run), marcata
+# come "latest". Il launcher installato confronta il proprio numero di build
+# con quello dell'ultima release e, se è più vecchio, si aggiorna da solo.
 name: release
 
 on:
@@ -20,6 +20,10 @@ concurrency:
 jobs:
   windows-setup:
     runs-on: windows-latest
+    env:
+      # Incorporati nel binario: abilitano l'aggiornamento automatico.
+      HYPER_BUILD: ${{ github.run_number }}
+      HYPER_UPDATE_REPO: ${{ github.repository }}
     steps:
       - uses: actions/checkout@v5
 
@@ -53,21 +57,24 @@ jobs:
             choco install innosetup --no-progress -y
             $env:Path += ";${env:ProgramFiles(x86)}\Inno Setup 6"
           }
-          iscc "/DAppVersion=${{ steps.version.outputs.version }}" installer\hyper-launcher.iss
+          iscc "/DAppVersion=${{ steps.version.outputs.version }}" "/DBuild=${{ github.run_number }}" installer\hyper-launcher.iss
+
+      - name: Hash
+        shell: bash
+        run: sha1sum dist/HyperLauncher-Setup.exe | cut -d' ' -f1 > dist/HyperLauncher-Setup.exe.sha1
 
       - name: Publish release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: v${{ steps.version.outputs.version }}
+          TAG: build-${{ github.run_number }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           notes="Setup Windows compilato dal commit ${GITHUB_SHA::7} di main.
 
-          Installa \`hyper\` in %LOCALAPPDATA%\\Programs\\HyperLauncher e lo aggiunge al PATH (non servono permessi di amministratore). Il file non è firmato: Windows SmartScreen può chiedere conferma (\"Ulteriori informazioni\" → \"Esegui comunque\")."
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" dist/HyperLauncher-Setup.exe --clobber
-            gh release edit "$TAG" --notes "$notes"
-          else
-            gh release create "$TAG" dist/HyperLauncher-Setup.exe \
-              --title "Hyper Launcher $TAG" --notes "$notes" --target "$GITHUB_SHA" --latest
-          fi
+          Installa \`hyper\` in %LOCALAPPDATA%\\Programs\\HyperLauncher e lo aggiunge al PATH (non servono permessi di amministratore). Le installazioni esistenti si aggiornano da sole all'avvio di \`hyper\`.
+
+          Il file non è firmato: Windows SmartScreen può chiedere conferma (\"Ulteriori informazioni\" → \"Esegui comunque\")."
+          gh release create "$TAG" dist/HyperLauncher-Setup.exe dist/HyperLauncher-Setup.exe.sha1 \
+            --title "Hyper Launcher $VERSION (build ${{ github.run_number }})" \
+            --notes "$notes" --target "$GITHUB_SHA" --latest

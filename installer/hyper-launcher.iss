@@ -1,19 +1,28 @@
 ; Installer Windows di Hyper Launcher (Inno Setup 6).
 ; Compilato dalla GitHub Action `release`:
-;   iscc /DAppVersion=0.1.0 installer\hyper-launcher.iss
+;   iscc /DAppVersion=0.1.0 /DBuild=12 installer\hyper-launcher.iss
 ; Installa per l'utente corrente (nessun permesso di amministratore) e
 ; aggiunge la cartella di installazione al PATH dell'utente, così `hyper`
-; è disponibile in ogni terminale.
+; è disponibile in ogni terminale. Rieseguito sopra un'installazione
+; esistente (anche in modo silenzioso, dall'aggiornamento automatico) la
+; aggiorna sul posto.
 
 #ifndef AppVersion
-  #define AppVersion "0.0.0-dev"
+  #define AppVersion "0.0.0"
+#endif
+#ifndef Build
+  #define Build "0"
 #endif
 
 [Setup]
 AppId={{064185E1-75EB-4CFD-B5D8-E5F9741FCCC4}
 AppName=Hyper Launcher
-AppVersion={#AppVersion}
-AppVerName=Hyper Launcher {#AppVersion}
+AppVersion={#AppVersion} (build {#Build})
+AppVerName=Hyper Launcher {#AppVersion} (build {#Build})
+VersionInfoVersion={#AppVersion}.{#Build}
+; Se hyper.exe è ancora in uso durante l'aggiornamento, viene chiuso.
+CloseApplications=force
+RestartApplications=no
 AppPublisher=Hyper Launcher
 DefaultDirName={localappdata}\Programs\HyperLauncher
 DisableProgramGroupPage=yes
