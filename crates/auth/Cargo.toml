@@ -1,6 +1,6 @@
 [package]
 name = "hyper-auth"
-description = "Gestione account (per ora solo offline)"
+description = "Account: offline e Microsoft (OAuth device code → Xbox Live → XSTS → Minecraft)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,14 +8,21 @@ publish.workspace = true
 
 [dependencies]
 hyper-core.workspace = true
+keyring.workspace = true
 md-5.workspace = true
+reqwest.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
 toml.workspace = true
+tracing.workspace = true
 uuid.workspace = true
+zeroize.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+wiremock.workspace = true
 
 [lints]
 workspace = true

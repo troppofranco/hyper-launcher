@@ -6,7 +6,7 @@ use std::fs::File;
 use std::path::PathBuf;
 use std::process::{Child, ExitStatus};
 
-use hyper_auth::Account;
+use hyper_auth::Session;
 use hyper_core::Config;
 use hyper_installer::{InstalledVersion, Installer, InstallerError, StageProgressFn};
 
@@ -80,7 +80,7 @@ pub struct RunningGame {
 pub async fn prepare_launch(
     installer: &Installer,
     instance: &Instance,
-    account: &Account,
+    session: &Session,
     config: &Config,
     java_override: Option<PathBuf>,
     progress: Option<StageProgressFn<'_>>,
@@ -99,7 +99,7 @@ pub async fn prepare_launch(
         LaunchOptions {
             java: &java,
             memory_mb,
-            account,
+            session,
             paths: installer.paths(),
         },
     );

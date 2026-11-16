@@ -5,7 +5,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 
-use hyper_auth::Account;
+use hyper_auth::Session;
 use hyper_core::{LAUNCHER_NAME, LAUNCHER_VERSION, Paths, fs, platform};
 use hyper_installer::version::Argument;
 use hyper_installer::{InstalledVersion, natives};
@@ -17,7 +17,7 @@ use crate::{Instance, InstanceError, Result};
 pub struct LaunchOptions<'a> {
     pub java: &'a Path,
     pub memory_mb: u32,
-    pub account: &'a Account,
+    pub session: &'a Session,
     pub paths: &'a Paths,
 }
 
@@ -26,7 +26,7 @@ pub struct LaunchCommand {
     pub program: PathBuf,
     pub args: Vec<String>,
     pub cwd: PathBuf,
-    /// Valori da non mostrare mai (token dell'account), ovunque compaiano.
+    /// Valori da non mostrare mai (token della sessione), ovunque compaiano.
     secrets: Vec<String>,
 }
 
@@ -113,16 +113,16 @@ pub fn build_command(
         .join(separator);
     let path = |p: PathBuf| p.display().to_string();
     let assets_root = path(opts.paths.assets_dir());
-    let token = opts.account.access_token().to_owned();
+    let token = opts.session.access_token.expose().to_owned();
 
     let vars: HashMap<&str, String> = HashMap::from([
-        ("auth_player_name", opts.account.name().to_owned()),
-        ("auth_uuid", opts.account.uuid().simple().to_string()),
+        ("auth_player_name", opts.session.name.clone()),
+        ("auth_uuid", opts.session.uuid.simple().to_string()),
         ("auth_access_token", token.clone()),
         ("auth_session", token),
         ("auth_xuid", String::new()),
         ("clientid", String::new()),
-        ("user_type", opts.account.user_type().to_owned()),
+        ("user_type", opts.session.user_type.to_owned()),
         ("user_properties", "{}".to_owned()),
         ("version_name", version.id.clone()),
         ("version_type", version.kind.as_str().to_owned()),
@@ -171,8 +171,8 @@ pub fn build_command(
     args.push(version.main_class.clone());
     args.extend(game_args);
 
-    let secrets = if opts.account.token_is_secret() {
-        vec![opts.account.access_token().to_owned()]
+    let secrets = if opts.session.token_is_secret {
+        vec![opts.session.access_token.expose().to_owned()]
     } else {
         Vec::new()
     };
@@ -207,6 +207,7 @@ fn substitute(arg: &str, vars: &HashMap<&str, String>) -> String {
 
 #[cfg(test)]
 mod tests {
+    use hyper_auth::{Account, Secret};
     use hyper_installer::{RuleContext, VersionJson};
 
     use super::*;
@@ -243,16 +244,51 @@ mod tests {
         }
     }
 
-    fn build(json: &str) -> Vec<String> {
+    fn offline_session() -> Session {
         let account = Account::offline("Dev").unwrap();
+        Session {
+            name: account.name().to_owned(),
+            uuid: account.uuid(),
+            access_token: Secret::new("0"),
+            token_is_secret: false,
+            user_type: "msa",
+        }
+    }
+
+    fn build(json: &str) -> Vec<String> {
+        let session = offline_session();
         let paths = Paths::new("root");
         let opts = LaunchOptions {
             java: Path::new("java"),
             memory_mb: 2048,
-            account: &account,
+            session: &session,
             paths: &paths,
         };
         build_command(&instance(), &installed(json), opts).args
+    }
+
+    #[test]
+    fn microsoft_session_token_is_passed_but_redacted() {
+        let mut session = offline_session();
+        session.access_token = Secret::new("eyJ.real.token");
+        session.token_is_secret = true;
+        let paths = Paths::new("root");
+        let command = build_command(
+            &instance(),
+            &installed(
+                r#"{"id": "1.21.4", "type": "release", "mainClass": "M",
+                    "arguments": {"game": ["--accessToken", "${auth_access_token}"], "jvm": []}}"#,
+            ),
+            LaunchOptions {
+                java: Path::new("java"),
+                memory_mb: 2048,
+                session: &session,
+                paths: &paths,
+            },
+        );
+        assert!(command.args.iter().any(|a| a == "eyJ.real.token"));
+        let shown = format!("{:?} {:?}", command.redacted_args(), command);
+        assert!(!shown.contains("eyJ.real.token"), "{shown}");
     }
 
     #[test]

@@ -8,7 +8,9 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
-use hyper_auth::{Account, AccountStore};
+use hyper_auth::{
+    Account, AccountStore, AuthError, Endpoints, KEYRING_SERVICE, KeyringStore, MsaClient,
+};
 use hyper_core::{Config, Paths};
 use hyper_installer::{Installer, VersionKind};
 use hyper_instances::InstanceManager;
@@ -68,6 +70,10 @@ enum Command {
 enum AccountCommand {
     /// Aggiunge un account offline.
     AddOffline { name: String },
+    /// Aggiunge un account Microsoft (login nel browser con un codice).
+    AddMicrosoft,
+    /// Rimuove un account e cancella i suoi token dal keyring.
+    Remove { name: String },
     /// Imposta l'account predefinito.
     Default { name: String },
     /// Elenca gli account.
@@ -103,7 +109,27 @@ impl App {
     fn instances(&self) -> InstanceManager {
         InstanceManager::new(self.paths.clone())
     }
+
+    fn secrets(&self) -> KeyringStore {
+        KeyringStore::new(KEYRING_SERVICE)
+    }
+
+    /// Client Microsoft, se è configurato un client ID.
+    fn msa(&self) -> Result<Option<MsaClient>> {
+        self.config
+            .effective_msa_client_id()
+            .map(|id| MsaClient::new(id, Endpoints::default()))
+            .transpose()
+            .map_err(Into::into)
+    }
 }
+
+/// Spiegazione mostrata quando manca il client ID dell'app Azure.
+const MISSING_CLIENT_ID_HELP: &str = "manca il client ID Microsoft.
+Registra un'app su portal.azure.com (App registrations → \"Personal Microsoft accounts only\",
+Authentication → \"Allow public client flows\" = Yes), poi imposta il suo Application (client) ID
+in config.toml (msa_client_id = \"...\") o nella variabile HYPER_MSA_CLIENT_ID.
+Perché Minecraft accetti il login, l'app deve anche essere approvata da Mojang per la Minecraft API.";
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -126,7 +152,7 @@ async fn main() -> Result<()> {
             all,
             limit,
         } => versions(&app, snapshots, all, limit).await,
-        Command::Account(cmd) => account(&app, cmd),
+        Command::Account(cmd) => account(&app, cmd).await,
         Command::Instance(cmd) => instance(&app, cmd).await,
         Command::Install { instance, java } => install(&app, &instance, java).await,
         Command::Launch {
@@ -157,7 +183,7 @@ async fn versions(app: &App, snapshots: bool, all: bool, limit: usize) -> Result
     Ok(())
 }
 
-fn account(app: &App, cmd: AccountCommand) -> Result<()> {
+async fn account(app: &App, cmd: AccountCommand) -> Result<()> {
     let path = app.paths.accounts_file();
     let mut store = AccountStore::load(&path)?;
     match cmd {
@@ -166,6 +192,37 @@ fn account(app: &App, cmd: AccountCommand) -> Result<()> {
             println!("Account offline {} ({})", account.name(), account.uuid());
             store.upsert(account);
             store.save(&path)?;
+        }
+        AccountCommand::AddMicrosoft => {
+            let Some(msa) = app.msa()? else {
+                bail!(MISSING_CLIENT_ID_HELP);
+            };
+            let code = msa.start_device_login().await?;
+            println!(
+                "Apri {} e inserisci il codice {}\n(valido {} minuti, in attesa della conferma…)",
+                code.verification_uri,
+                code.user_code,
+                code.expires_in / 60
+            );
+            let account = hyper_auth::login_microsoft(&msa, &app.secrets(), &code).await?;
+            println!(
+                "Account Microsoft {} ({}) aggiunto. Token salvati nel keyring di sistema.",
+                account.name(),
+                account.uuid()
+            );
+            store.upsert(account.clone());
+            // Se accounts.toml non si salva, i token appena scritti non devono
+            // restare orfani nel keyring.
+            if let Err(e) = store.save(&path) {
+                let _ = hyper_auth::forget(&account, &app.secrets());
+                return Err(e.into());
+            }
+        }
+        AccountCommand::Remove { name } => {
+            let account = store.remove(&name)?;
+            hyper_auth::forget(&account, &app.secrets())?;
+            store.save(&path)?;
+            println!("Account {} rimosso.", account.name());
         }
         AccountCommand::Default { name } => {
             println!("Account predefinito: {}", store.set_default(&name)?.name());
@@ -244,17 +301,25 @@ async fn launch(
     dry_run: bool,
 ) -> Result<()> {
     let accounts = AccountStore::load(&app.paths.accounts_file())?;
-    let account = accounts
-        .select(account)
-        .context("serve un account: `hyper account add-offline <nome>`")?;
+    let account = accounts.select(account).context(
+        "serve un account: `hyper account add-offline <nome>` o `hyper account add-microsoft`",
+    )?;
     let instance = app.instances().load(name)?;
+    let msa = app.msa()?;
+    let session = match hyper_auth::session(account, &app.secrets(), msa.as_ref()).await {
+        Err(AuthError::MissingClientId) => bail!(MISSING_CLIENT_ID_HELP),
+        Err(e @ (AuthError::LoginExpired | AuthError::CorruptSecret(_))) => {
+            bail!("{e}\nRifai il login con `hyper account add-microsoft`.")
+        }
+        other => other?,
+    };
 
     let view = ProgressView::new();
     let report = |stage, progress| view.update(stage, progress);
     let prepared = hyper_instances::prepare_launch(
         &app.installer()?,
         &instance,
-        account,
+        &session,
         &app.config,
         java,
         Some(&report),
@@ -275,7 +340,7 @@ async fn launch(
     println!(
         "Avvio Minecraft {} come {} ({})…",
         prepared.installed.version.id,
-        account.name(),
+        session.name,
         account.kind()
     );
     let game = prepared.spawn()?;

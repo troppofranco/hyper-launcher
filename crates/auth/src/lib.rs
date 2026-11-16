@@ -1,6 +1,17 @@
-//! Account di gioco. In questa fase solo account offline: nessun segreto,
-//! quindi salvarli in `accounts.toml` è sicuro. Gli account Microsoft (fase 2)
-//! terranno i token esclusivamente nel keyring di sistema.
+//! Account di gioco: offline e Microsoft.
+//!
+//! `accounts.toml` contiene solo dati pubblici (tipo, nome, UUID). I token
+//! Microsoft e Minecraft stanno esclusivamente in un [`SecretStore`] (il
+//! keyring di sistema), sono avvolti in [`Secret`] e non vengono mai
+//! stampati né scritti su disco in chiaro.
+
+#[cfg(test)]
+mod flow_tests;
+pub mod msa;
+mod secret;
+mod session;
+mod store;
+pub mod xbox;
 
 use std::path::Path;
 
@@ -8,6 +19,14 @@ use hyper_core::{CoreError, fs};
 use md5::{Digest, Md5};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+pub use msa::{DeviceCode, Endpoints, MsaClient};
+pub use secret::Secret;
+pub use session::{Session, forget, login_microsoft, session};
+pub use store::{KeyringStore, MemoryStore, SecretStore};
+
+/// Servizio con cui il launcher registra le voci nel keyring.
+pub const KEYRING_SERVICE: &str = "hyper-launcher";
 
 #[derive(Debug, thiserror::Error)]
 pub enum AuthError {
@@ -22,12 +41,87 @@ pub enum AuthError {
 
     #[error("no accounts configured")]
     NoAccounts,
+
+    #[error(
+        "no Microsoft client ID configured (msa_client_id in config.toml or HYPER_MSA_CLIENT_ID)"
+    )]
+    MissingClientId,
+
+    #[error("the login code expired before it was confirmed")]
+    DeviceCodeExpired,
+
+    #[error("the login was declined in the browser")]
+    AuthorizationDeclined,
+
+    #[error("the Microsoft login expired or was revoked: sign in again")]
+    LoginExpired,
+
+    #[error("this Microsoft account has no Xbox profile: create one at xbox.com and retry")]
+    NoXboxAccount,
+
+    #[error("Xbox Live is not available in this account's country")]
+    XboxUnavailableInCountry,
+
+    #[error("this account needs adult verification on xbox.com")]
+    AdultVerificationRequired,
+
+    #[error("child account: an adult must add it to a Microsoft family group")]
+    ChildAccount,
+
+    #[error("Xbox authorization failed (XErr {0})")]
+    Xsts(u64),
+
+    #[error(
+        "Mojang rejected this app's client ID (403): it has not been approved for the Minecraft API yet"
+    )]
+    AppNotApproved,
+
+    #[error(
+        "no Minecraft: Java Edition profile on this account: buy the game, or (Game Pass) create a profile name on minecraft.net first"
+    )]
+    GameNotOwned,
+
+    #[error("Microsoft OAuth error {error}: {description}")]
+    OAuth { error: String, description: String },
+
+    #[error("HTTP request to {url} failed: {source}")]
+    Http {
+        url: String,
+        #[source]
+        source: reqwest::Error,
+    },
+
+    #[error("cannot build the HTTP client: {0}")]
+    HttpClient(#[source] reqwest::Error),
+
+    #[error("{url} answered with HTTP {status}")]
+    UnexpectedStatus { url: String, status: u16 },
+
+    #[error("unexpected response: {0}")]
+    MalformedResponse(&'static str),
+
+    #[error("system keyring error: {0}")]
+    Keyring(#[from] keyring::Error),
+
+    #[error("the Minecraft profile does not match this account: sign in again")]
+    AccountMismatch,
+
+    #[error("keyring entry {0:?} is corrupted: sign in again")]
+    CorruptSecret(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Account {
-    Offline { name: String, uuid: Uuid },
+    Offline {
+        name: String,
+        uuid: Uuid,
+    },
+    /// I token sono nel keyring, indicizzati per UUID.
+    Microsoft {
+        name: String,
+        uuid: Uuid,
+    },
 }
 
 impl Account {
@@ -42,41 +136,20 @@ impl Account {
 
     pub fn name(&self) -> &str {
         match self {
-            Self::Offline { name, .. } => name,
+            Self::Offline { name, .. } | Self::Microsoft { name, .. } => name,
         }
     }
 
     pub fn uuid(&self) -> Uuid {
         match self {
-            Self::Offline { uuid, .. } => *uuid,
+            Self::Offline { uuid, .. } | Self::Microsoft { uuid, .. } => *uuid,
         }
-    }
-
-    /// Token da passare al gioco. Per gli account offline il valore non
-    /// viene verificato da nessuno: `0` è la convenzione comune.
-    pub fn access_token(&self) -> &str {
-        match self {
-            Self::Offline { .. } => "0",
-        }
-    }
-
-    /// `true` se [`Self::access_token`] è un segreto da non mostrare mai
-    /// (falso per gli account offline, il cui token è un segnaposto).
-    pub fn token_is_secret(&self) -> bool {
-        match self {
-            Self::Offline { .. } => false,
-        }
-    }
-
-    /// Valore di `${user_type}`. Le versioni recenti riconoscono solo
-    /// `msa`/`legacy`/`mojang`; `msa` funziona anche offline.
-    pub fn user_type(&self) -> &'static str {
-        "msa"
     }
 
     pub fn kind(&self) -> &'static str {
         match self {
             Self::Offline { .. } => "offline",
+            Self::Microsoft { .. } => "microsoft",
         }
     }
 }
@@ -131,6 +204,16 @@ impl AccountStore {
         Ok(&self.accounts[index])
     }
 
+    /// Rimuove l'account e lo restituisce (per cancellarne i segreti con
+    /// [`forget`]). Se era il predefinito, il predefinito passa al primo rimasto.
+    pub fn remove(&mut self, name: &str) -> Result<Account, AuthError> {
+        let account = self.accounts.remove(self.position(name)?);
+        if self.is_default(&account) {
+            self.default = self.accounts.first().map(|a| a.name().to_owned());
+        }
+        Ok(account)
+    }
+
     fn position(&self, name: &str) -> Result<usize, AuthError> {
         self.accounts
             .iter()
@@ -149,8 +232,11 @@ impl AccountStore {
     /// Aggiunge (o sostituisce, confrontando i nomi senza distinzione di
     /// maiuscole) un account. Il primo account diventa il predefinito.
     pub fn upsert(&mut self, account: Account) {
-        self.accounts
-            .retain(|a| !a.name().eq_ignore_ascii_case(account.name()));
+        // Stesso nome o stesso UUID (un account Microsoft che ha cambiato
+        // nome) = stesso account.
+        self.accounts.retain(|a| {
+            !a.name().eq_ignore_ascii_case(account.name()) && a.uuid() != account.uuid()
+        });
         // Il predefinito segue anche un cambio di maiuscole del nome.
         let replaces_default = self
             .default

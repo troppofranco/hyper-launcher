@@ -14,6 +14,9 @@ pub struct Config {
     pub java_path: Option<PathBuf>,
     /// Numero massimo di download simultanei.
     pub download_concurrency: usize,
+    /// Application (client) ID dell'app Azure usata per il login Microsoft.
+    /// Non è un segreto. Sovrascrivibile con `HYPER_MSA_CLIENT_ID`.
+    pub msa_client_id: Option<String>,
 }
 
 impl Default for Config {
@@ -22,11 +25,23 @@ impl Default for Config {
             default_memory_mb: 4096,
             java_path: None,
             download_concurrency: 16,
+            msa_client_id: None,
         }
     }
 }
 
 impl Config {
+    pub const MSA_CLIENT_ID_ENV: &str = "HYPER_MSA_CLIENT_ID";
+
+    /// Client ID Microsoft effettivo: variabile d'ambiente, poi config.
+    pub fn effective_msa_client_id(&self) -> Option<String> {
+        std::env::var(Self::MSA_CLIENT_ID_ENV)
+            .ok()
+            .or_else(|| self.msa_client_id.clone())
+            .map(|id| id.trim().to_owned())
+            .filter(|id| !id.is_empty())
+    }
+
     pub fn load(paths: &Paths) -> Result<Self, CoreError> {
         fs::read_toml_or_default(&paths.config_file())
     }
