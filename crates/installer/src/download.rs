@@ -14,7 +14,6 @@ use crate::hash::{check_hash, check_size, commit, file_is_valid};
 use crate::{InstallerError, Result, Sha1Hex};
 
 const MAX_ATTEMPTS: u32 = 3;
-const USER_AGENT: &str = concat!("HyperLauncher/", env!("CARGO_PKG_VERSION"));
 
 /// File da garantire su disco con un certo hash.
 #[derive(Debug, Clone)]
@@ -63,7 +62,7 @@ pub struct Downloader {
 impl Downloader {
     pub fn new(concurrency: usize) -> Result<Self> {
         let client = reqwest::Client::builder()
-            .user_agent(USER_AGENT)
+            .user_agent(hyper_core::USER_AGENT)
             .connect_timeout(Duration::from_secs(15))
             .read_timeout(Duration::from_secs(60))
             .build()

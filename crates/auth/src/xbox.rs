@@ -2,22 +2,22 @@
 //! `login_with_xbox`, poi verifica del profilo (= possesso del gioco).
 
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{Value, json};
 use uuid::Uuid;
 
-use crate::msa::{MsaClient, http};
+use crate::msa::{MsaClient, json, send};
 use crate::{AuthError, Secret};
 
 /// Token Minecraft pronto per il gioco.
 #[derive(Debug)]
-pub struct McToken {
+pub(crate) struct McToken {
     pub access_token: Secret,
     /// Secondi di validità.
     pub expires_in: u64,
 }
 
 #[derive(Debug, Clone)]
-pub struct McProfile {
+pub(crate) struct McProfile {
     pub uuid: Uuid,
     pub name: String,
 }
@@ -46,12 +46,6 @@ struct XstsError {
 }
 
 #[derive(Debug, Deserialize)]
-struct McLoginResponse {
-    access_token: Secret,
-    expires_in: u64,
-}
-
-#[derive(Debug, Deserialize)]
 struct ProfileResponse {
     id: String,
     name: String,
@@ -59,7 +53,10 @@ struct ProfileResponse {
 
 impl MsaClient {
     /// Catena completa dal token di accesso Microsoft al token Minecraft.
-    pub async fn minecraft_login(&self, ms_access_token: &Secret) -> Result<McToken, AuthError> {
+    pub(crate) async fn minecraft_login(
+        &self,
+        ms_access_token: &Secret,
+    ) -> Result<McToken, AuthError> {
         let xbl = self.xbox_live(ms_access_token).await?;
         let xsts = self.xsts(&xbl.token).await?;
         let uhs = &xsts
@@ -74,19 +71,19 @@ impl MsaClient {
             self.endpoints.minecraft
         );
         let identity = format!("XBL3.0 x={uhs};{}", xsts.token.expose());
-        let response = self
-            .http
-            .post(&url)
-            .json(&json!({ "identityToken": identity }))
-            .send()
-            .await
-            .map_err(http(&url))?;
+        let body = json!({ "identityToken": identity });
+        let response = send(&url, self.http().post(&url).json(&body)).await?;
         match response.status().as_u16() {
             200..=299 => {
-                let body: McLoginResponse = response.json().await.map_err(http(&url))?;
+                #[derive(Deserialize)]
+                struct Login {
+                    access_token: Secret,
+                    expires_in: u64,
+                }
+                let login: Login = json(&url, response).await?;
                 Ok(McToken {
-                    access_token: body.access_token,
-                    expires_in: body.expires_in,
+                    access_token: login.access_token,
+                    expires_in: login.expires_in,
                 })
             }
             // Mojang rifiuta le app Azure non approvate per la Minecraft API.
@@ -95,19 +92,14 @@ impl MsaClient {
         }
     }
 
-    /// Profilo Minecraft dell'account; 404 = l'account non possiede il gioco.
-    pub async fn profile(&self, mc_token: &Secret) -> Result<McProfile, AuthError> {
+    /// Profilo Minecraft dell'account; 404 = nessun profilo Java.
+    pub(crate) async fn profile(&self, mc_token: &Secret) -> Result<McProfile, AuthError> {
         let url = format!("{}/minecraft/profile", self.endpoints.minecraft);
-        let response = self
-            .http
-            .get(&url)
-            .bearer_auth(mc_token.expose())
-            .send()
-            .await
-            .map_err(http(&url))?;
+        let request = self.http().get(&url).bearer_auth(mc_token.expose());
+        let response = send(&url, request).await?;
         match response.status().as_u16() {
             200..=299 => {
-                let body: ProfileResponse = response.json().await.map_err(http(&url))?;
+                let body: ProfileResponse = json(&url, response).await?;
                 let uuid = Uuid::parse_str(&body.id)
                     .map_err(|_| AuthError::MalformedResponse("profile id is not a UUID"))?;
                 Ok(McProfile {
@@ -131,20 +123,7 @@ impl MsaClient {
             "RelyingParty": "http://auth.xboxlive.com",
             "TokenType": "JWT",
         });
-        let response = self
-            .http
-            .post(&url)
-            .json(&body)
-            .send()
-            .await
-            .map_err(http(&url))?;
-        if !response.status().is_success() {
-            return Err(AuthError::UnexpectedStatus {
-                url,
-                status: response.status().as_u16(),
-            });
-        }
-        response.json().await.map_err(http(&url))
+        self.xbox_post(&url, &body).await
     }
 
     async fn xsts(&self, xbl_token: &Secret) -> Result<XboxToken, AuthError> {
@@ -154,25 +133,27 @@ impl MsaClient {
             "RelyingParty": "rp://api.minecraftservices.com/",
             "TokenType": "JWT",
         });
-        let response = self
-            .http
-            .post(&url)
-            .json(&body)
-            .send()
-            .await
-            .map_err(http(&url))?;
+        self.xbox_post(&url, &body).await
+    }
+
+    /// POST JSON ai servizi Xbox; un rifiuto con codice `XErr` diventa
+    /// l'errore che spiega il motivo.
+    async fn xbox_post(&self, url: &str, body: &Value) -> Result<XboxToken, AuthError> {
+        let response = send(url, self.http().post(url).json(body)).await?;
         let status = response.status().as_u16();
         if (200..300).contains(&status) {
-            return response.json().await.map_err(http(&url));
+            return json(url, response).await;
         }
-        // 401 con un codice XErr che spiega il motivo.
         match response.json::<XstsError>().await.map(|e| e.xerr) {
             Ok(2148916233) => Err(AuthError::NoXboxAccount),
             Ok(2148916235) => Err(AuthError::XboxUnavailableInCountry),
             Ok(2148916236 | 2148916237) => Err(AuthError::AdultVerificationRequired),
             Ok(2148916238) => Err(AuthError::ChildAccount),
             Ok(code) => Err(AuthError::Xsts(code)),
-            Err(_) => Err(AuthError::UnexpectedStatus { url, status }),
+            Err(_) => Err(AuthError::UnexpectedStatus {
+                url: url.to_owned(),
+                status,
+            }),
         }
     }
 }

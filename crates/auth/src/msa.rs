@@ -4,7 +4,9 @@
 
 use std::time::Duration;
 
+use hyper_core::Config;
 use serde::Deserialize;
+use serde::de::DeserializeOwned;
 
 use crate::{AuthError, Secret};
 
@@ -34,7 +36,7 @@ impl Default for Endpoints {
 /// Client per l'intera catena Microsoft → Minecraft.
 #[derive(Debug, Clone)]
 pub struct MsaClient {
-    pub(crate) http: reqwest::Client,
+    http: reqwest::Client,
     client_id: String,
     pub(crate) endpoints: Endpoints,
     /// Unità dell'intervallo di polling (1 s; ridotta nei test).
@@ -54,7 +56,7 @@ pub struct DeviceCode {
 
 /// Token Microsoft (non ancora Minecraft).
 #[derive(Debug, Deserialize)]
-pub struct MsTokens {
+pub(crate) struct MsTokens {
     pub access_token: Secret,
     pub refresh_token: Secret,
 }
@@ -69,7 +71,7 @@ struct OAuthError {
 impl MsaClient {
     pub fn new(client_id: impl Into<String>, endpoints: Endpoints) -> Result<Self, AuthError> {
         let http = reqwest::Client::builder()
-            .user_agent(concat!("HyperLauncher/", env!("CARGO_PKG_VERSION")))
+            .user_agent(hyper_core::USER_AGENT)
             .connect_timeout(Duration::from_secs(15))
             .timeout(Duration::from_secs(30))
             .build()
@@ -82,32 +84,38 @@ impl MsaClient {
         })
     }
 
+    /// Client per i servizi reali con il client ID configurato
+    /// (`HYPER_MSA_CLIENT_ID` o `msa_client_id`); `None` se manca.
+    pub fn from_config(config: &Config) -> Result<Option<Self>, AuthError> {
+        config
+            .effective_msa_client_id()
+            .map(|id| Self::new(id, Endpoints::default()))
+            .transpose()
+    }
+
     #[cfg(test)]
     pub(crate) fn with_poll_unit(mut self, unit: Duration) -> Self {
         self.poll_unit = unit;
         self
     }
 
+    pub(crate) fn http(&self) -> &reqwest::Client {
+        &self.http
+    }
+
     /// Primo passo del login: chiede a Microsoft un codice per l'utente.
     pub async fn start_device_login(&self) -> Result<DeviceCode, AuthError> {
         let url = format!("{}/devicecode", self.endpoints.login);
         let form = [("client_id", self.client_id.as_str()), ("scope", SCOPE)];
-        let response = self
-            .http
-            .post(&url)
-            .form(&form)
-            .send()
-            .await
-            .map_err(http(&url))?;
-        if !response.status().is_success() {
-            return Err(oauth_error(&url, response).await);
-        }
-        response.json().await.map_err(http(&url))
+        self.oauth_post(&url, &form).await
     }
 
     /// Attende che l'utente confermi il codice nel browser, rispettando
     /// `interval` e `slow_down` come richiesto dal protocollo.
-    pub async fn wait_for_device_login(&self, code: &DeviceCode) -> Result<MsTokens, AuthError> {
+    pub(crate) async fn wait_for_device_login(
+        &self,
+        code: &DeviceCode,
+    ) -> Result<MsTokens, AuthError> {
         let url = format!("{}/token", self.endpoints.login);
         let deadline = tokio::time::Instant::now() + self.poll_unit * secs(code.expires_in);
         let mut interval = code.interval.max(1);
@@ -121,37 +129,35 @@ impl MsaClient {
                 ("client_id", self.client_id.as_str()),
                 ("device_code", code.device_code.expose()),
             ];
-            // Un errore di rete transitorio non annulla il login: si riprova
-            // al giro successivo finché il codice è valido.
-            let response = match self.http.post(&url).form(&form).send().await {
-                Ok(response) => response,
-                Err(e) => {
-                    tracing::warn!(error = %e, "device code poll failed, retrying");
+            let err = match self.oauth_post(&url, &form).await {
+                Ok(tokens) => return Ok(tokens),
+                Err(err) => err,
+            };
+            let code = match &err {
+                AuthError::OAuth { error, .. } => error.as_str(),
+                // Un errore di rete transitorio non annulla il login: si
+                // riprova al giro successivo finché il codice è valido.
+                AuthError::Http { .. } => {
+                    tracing::warn!(error = %err, "device code poll failed, retrying");
                     continue;
                 }
+                _ => return Err(err),
             };
-            if response.status().is_success() {
-                return response.json().await.map_err(http(&url));
-            }
-            match oauth_error(&url, response).await {
-                AuthError::OAuth { error, .. } if error == "authorization_pending" => {}
-                AuthError::OAuth { error, .. } if error == "slow_down" => interval += 5,
-                AuthError::OAuth { error, .. } if error == "expired_token" => {
-                    return Err(AuthError::DeviceCodeExpired);
-                }
-                AuthError::OAuth { error, .. }
-                    if error == "authorization_declined" || error == "access_denied" =>
-                {
+            match code {
+                "authorization_pending" => {}
+                "slow_down" => interval += 5,
+                "expired_token" => return Err(AuthError::DeviceCodeExpired),
+                "authorization_declined" | "access_denied" => {
                     return Err(AuthError::AuthorizationDeclined);
                 }
-                other => return Err(other),
+                _ => return Err(err),
             }
         }
     }
 
     /// Nuovi token dal refresh token. Microsoft lo ruota: il chiamante deve
     /// salvare quello restituito.
-    pub async fn refresh(&self, refresh_token: &Secret) -> Result<MsTokens, AuthError> {
+    pub(crate) async fn refresh(&self, refresh_token: &Secret) -> Result<MsTokens, AuthError> {
         let url = format!("{}/token", self.endpoints.login);
         let form = [
             ("grant_type", "refresh_token"),
@@ -159,23 +165,37 @@ impl MsaClient {
             ("refresh_token", refresh_token.expose()),
             ("scope", SCOPE),
         ];
-        let response = self
-            .http
-            .post(&url)
-            .form(&form)
-            .send()
-            .await
-            .map_err(http(&url))?;
-        if response.status().is_success() {
-            return response.json().await.map_err(http(&url));
-        }
-        match oauth_error(&url, response).await {
+        match self.oauth_post(&url, &form).await {
             // Refresh token revocato o scaduto: serve un nuovo login.
-            AuthError::OAuth { error, .. } if error == "invalid_grant" => {
+            Err(AuthError::OAuth { error, .. }) if error == "invalid_grant" => {
                 Err(AuthError::LoginExpired)
             }
-            other => Err(other),
+            other => other,
         }
+    }
+
+    /// POST di un form all'endpoint OAuth; gli errori del protocollo
+    /// diventano [`AuthError::OAuth`].
+    async fn oauth_post<T: DeserializeOwned>(
+        &self,
+        url: &str,
+        form: &[(&str, &str)],
+    ) -> Result<T, AuthError> {
+        let response = send(url, self.http.post(url).form(form)).await?;
+        let status = response.status();
+        if status.is_success() {
+            return json(url, response).await;
+        }
+        Err(match response.json::<OAuthError>().await {
+            Ok(e) => AuthError::OAuth {
+                error: e.error,
+                description: e.error_description,
+            },
+            Err(_) => AuthError::UnexpectedStatus {
+                url: url.to_owned(),
+                status: status.as_u16(),
+            },
+        })
     }
 }
 
@@ -183,23 +203,24 @@ fn secs(n: u64) -> u32 {
     u32::try_from(n).unwrap_or(u32::MAX)
 }
 
-pub(crate) fn http(url: &str) -> impl FnOnce(reqwest::Error) -> AuthError + '_ {
-    move |source| AuthError::Http {
+/// Invia una richiesta; gli errori di trasporto diventano [`AuthError::Http`].
+pub(crate) async fn send(
+    url: &str,
+    request: reqwest::RequestBuilder,
+) -> Result<reqwest::Response, AuthError> {
+    request.send().await.map_err(|source| AuthError::Http {
         url: url.to_owned(),
         source,
-    }
+    })
 }
 
-async fn oauth_error(url: &str, response: reqwest::Response) -> AuthError {
-    let status = response.status();
-    match response.json::<OAuthError>().await {
-        Ok(e) => AuthError::OAuth {
-            error: e.error,
-            description: e.error_description,
-        },
-        Err(_) => AuthError::UnexpectedStatus {
-            url: url.to_owned(),
-            status: status.as_u16(),
-        },
-    }
+/// Legge il corpo JSON di una risposta riuscita.
+pub(crate) async fn json<T: DeserializeOwned>(
+    url: &str,
+    response: reqwest::Response,
+) -> Result<T, AuthError> {
+    response.json().await.map_err(|source| AuthError::Http {
+        url: url.to_owned(),
+        source,
+    })
 }

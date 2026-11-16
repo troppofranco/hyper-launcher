@@ -18,3 +18,12 @@ pub use safe_path::{safe_component, safe_join};
 pub const LAUNCHER_NAME: &str = "hyper-launcher";
 /// Versione del launcher passata al gioco (`${launcher_version}`).
 pub const LAUNCHER_VERSION: &str = env!("CARGO_PKG_VERSION");
+/// User-Agent di tutte le richieste HTTP del launcher.
+pub const USER_AGENT: &str = concat!("HyperLauncher/", env!("CARGO_PKG_VERSION"));
+
+/// Secondi dall'epoch Unix (0 se l'orologio è prima del 1970).
+pub fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}

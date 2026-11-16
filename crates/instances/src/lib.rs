@@ -6,7 +6,6 @@ mod launch;
 mod prepare;
 
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use hyper_core::{Config, CoreError, Paths, fs};
 use serde::{Deserialize, Serialize};
@@ -161,9 +160,7 @@ impl InstanceManager {
         if dir.exists() {
             return Err(InstanceError::AlreadyExists(name.to_owned()));
         }
-        let created = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_or(0, |d| d.as_secs());
+        let created = hyper_core::unix_now();
         let instance = Instance {
             config: InstanceConfig {
                 name: name.to_owned(),

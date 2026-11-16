@@ -272,7 +272,7 @@ async fn session_uses_cache_then_refreshes_and_rotates() {
     let store = MemoryStore::default();
 
     // Token in cache valido: nessuna rete (msa = None).
-    let far = crate::session::now() + 86_400;
+    let far = hyper_core::unix_now() + 86_400;
     store
         .set(
             &format!("mc-token:{uuid}"),
@@ -280,8 +280,7 @@ async fn session_uses_cache_then_refreshes_and_rotates() {
         )
         .unwrap();
     let session = crate::session(&account, &store, None).await.unwrap();
-    assert_eq!(session.access_token.expose(), "cached");
-    assert!(session.token_is_secret);
+    assert_eq!(session.access_token.unwrap().expose(), "cached");
 
     // Token scaduto: refresh con rotazione del refresh token.
     store
@@ -307,7 +306,7 @@ async fn session_uses_cache_then_refreshes_and_rotates() {
     mount_xbox_chain(&server, "mc-fresh").await;
     let msa = client(&server).await;
     let session = crate::session(&account, &store, Some(&msa)).await.unwrap();
-    assert_eq!(session.access_token.expose(), "mc-fresh");
+    assert_eq!(session.access_token.unwrap().expose(), "mc-fresh");
     assert_eq!(
         store
             .get(&format!("msa-refresh:{uuid}"))
@@ -343,7 +342,6 @@ async fn offline_session_is_not_secret() {
     let session = crate::session(&account, &MemoryStore::default(), None)
         .await
         .unwrap();
-    assert_eq!(session.access_token.expose(), "0");
-    assert!(!session.token_is_secret);
+    assert!(session.access_token.is_none());
     assert_eq!(session.uuid, account.uuid());
 }

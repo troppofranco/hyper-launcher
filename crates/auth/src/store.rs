@@ -1,10 +1,10 @@
 //! Dove vivono i segreti: il keyring di sistema in produzione, la memoria
 //! nei test. Mai su disco in chiaro.
 
-use std::collections::HashMap;
-use std::sync::Mutex;
-
 use crate::{AuthError, Secret};
+
+/// Servizio con cui il launcher registra le proprie voci nel keyring.
+pub const KEYRING_SERVICE: &str = "hyper-launcher";
 
 pub trait SecretStore: Send + Sync {
     fn get(&self, key: &str) -> Result<Option<Secret>, AuthError>;
@@ -14,16 +14,25 @@ pub trait SecretStore: Send + Sync {
 }
 
 /// Keyring del sistema (Windows Credential Manager, Keychain, Secret
-/// Service). Su Windows ogni voce ha un limite di 2560 byte: i valori più
-/// lunghi vengono divisi in più voci `chiave#0`, `chiave#1`, … e la voce
-/// `chiave` contiene solo il numero di parti.
+/// Service). La voce `chiave` contiene `v:<valore>` per i valori corti (i
+/// token normali: una sola lettura/scrittura) oppure `n:<parti>` quando il
+/// valore supera il limite Windows di 2560 byte e viene diviso in
+/// `chiave#0`, `chiave#1`, …
 #[derive(Debug, Clone)]
 pub struct KeyringStore {
     service: String,
 }
 
-/// Dimensione massima di una parte, con margine sotto il limite Windows.
+/// Dimensione massima di un valore in una singola voce, con margine sotto
+/// il limite Windows.
 const CHUNK: usize = 2000;
+
+impl Default for KeyringStore {
+    /// Lo store del launcher (servizio [`KEYRING_SERVICE`]).
+    fn default() -> Self {
+        Self::new(KEYRING_SERVICE)
+    }
+}
 
 impl KeyringStore {
     pub fn new(service: impl Into<String>) -> Self {
@@ -44,90 +53,101 @@ impl KeyringStore {
         }
     }
 
-    fn remove(&self, key: &str) -> Result<(), AuthError> {
+    fn write(&self, key: &str, bytes: &[u8]) -> Result<(), AuthError> {
+        Ok(self.entry(key)?.set_secret(bytes)?)
+    }
+
+    /// `true` se la voce esisteva.
+    fn remove(&self, key: &str) -> Result<bool, AuthError> {
         match self.entry(key)?.delete_credential() {
-            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Ok(()) => Ok(true),
+            Err(keyring::Error::NoEntry) => Ok(false),
             Err(e) => Err(e.into()),
         }
     }
 
-    fn parts(&self, key: &str) -> Result<usize, AuthError> {
-        let Some(header) = self.read(key)? else {
-            return Ok(0);
-        };
-        String::from_utf8(header)
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .ok_or_else(|| AuthError::CorruptSecret(key.to_owned()))
+    /// Cancella le parti da `from` in poi, finché esistono (senza fidarsi
+    /// dell'intestazione, che potrebbe essere corrotta o già sparita).
+    fn remove_parts_from(&self, key: &str, from: usize) -> Result<(), AuthError> {
+        for i in from.. {
+            if !self.remove(&format!("{key}#{i}"))? {
+                break;
+            }
+        }
+        Ok(())
     }
 }
 
 impl SecretStore for KeyringStore {
     fn get(&self, key: &str) -> Result<Option<Secret>, AuthError> {
-        let parts = self.parts(key)?;
-        if parts == 0 {
+        let corrupt = || AuthError::CorruptSecret(key.to_owned());
+        let Some(header) = self.read(key)? else {
             return Ok(None);
+        };
+        let header = String::from_utf8(header).map_err(|_| corrupt())?;
+        if let Some(value) = header.strip_prefix("v:") {
+            return Ok(Some(Secret::new(value)));
         }
+        let parts: usize = header
+            .strip_prefix("n:")
+            .and_then(|n| n.parse().ok())
+            .ok_or_else(corrupt)?;
         let mut bytes = Vec::new();
         for i in 0..parts {
-            let part = self
-                .read(&format!("{key}#{i}"))?
-                .ok_or_else(|| AuthError::CorruptSecret(key.to_owned()))?;
-            bytes.extend(part);
+            bytes.extend(self.read(&format!("{key}#{i}"))?.ok_or_else(corrupt)?);
         }
         String::from_utf8(bytes)
             .map(|s| Some(Secret::new(s)))
-            .map_err(|_| AuthError::CorruptSecret(key.to_owned()))
+            .map_err(|_| corrupt())
     }
 
     fn set(&self, key: &str, value: &Secret) -> Result<(), AuthError> {
-        self.delete(key)?;
-        let chunks: Vec<&[u8]> = value.expose().as_bytes().chunks(CHUNK).collect();
-        for (i, chunk) in chunks.iter().enumerate() {
-            self.entry(&format!("{key}#{i}"))?.set_secret(chunk)?;
+        let value = value.expose();
+        if value.len() <= CHUNK {
+            // Una sola scrittura atomica; poi via eventuali parti vecchie.
+            self.write(key, format!("v:{value}").as_bytes())?;
+            return self.remove_parts_from(key, 0);
         }
-        // L'intestazione per ultima: una scrittura interrotta lascia la voce
-        // "assente", mai mezza letta.
-        self.entry(key)?
-            .set_secret(chunks.len().to_string().as_bytes())?;
-        Ok(())
+        // Intestazione tolta prima e scritta per ultima: una scrittura
+        // interrotta lascia la voce "assente", mai mezza letta.
+        self.remove(key)?;
+        let chunks: Vec<&[u8]> = value.as_bytes().chunks(CHUNK).collect();
+        for (i, chunk) in chunks.iter().enumerate() {
+            self.write(&format!("{key}#{i}"), chunk)?;
+        }
+        self.write(key, format!("n:{}", chunks.len()).as_bytes())?;
+        self.remove_parts_from(key, chunks.len())
     }
 
     fn delete(&self, key: &str) -> Result<(), AuthError> {
         self.remove(key)?;
-        // Le parti si cancellano finché esistono, senza fidarsi
-        // dell'intestazione (che potrebbe essere corrotta o già sparita).
-        for i in 0.. {
-            let part = format!("{key}#{i}");
-            if self.read(&part)?.is_none() {
-                break;
-            }
-            self.remove(&part)?;
-        }
-        Ok(())
+        self.remove_parts_from(key, 0)
     }
 }
 
 /// Archivio in memoria per i test.
+#[cfg(test)]
 #[derive(Debug, Default)]
-pub struct MemoryStore {
-    values: Mutex<HashMap<String, Secret>>,
+pub(crate) struct MemoryStore {
+    values: std::sync::Mutex<std::collections::HashMap<String, Secret>>,
 }
 
+#[cfg(test)]
 impl MemoryStore {
-    pub fn keys(&self) -> Vec<String> {
+    pub(crate) fn keys(&self) -> Vec<String> {
         let mut keys: Vec<_> = self.lock().keys().cloned().collect();
         keys.sort();
         keys
     }
 
-    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, Secret>> {
+    fn lock(&self) -> std::sync::MutexGuard<'_, std::collections::HashMap<String, Secret>> {
         self.values
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 }
 
+#[cfg(test)]
 impl SecretStore for MemoryStore {
     fn get(&self, key: &str) -> Result<Option<Secret>, AuthError> {
         Ok(self.lock().get(key).cloned())
@@ -167,8 +187,15 @@ mod tests {
         let long = "x".repeat(CHUNK * 2 + 123);
         store.set("chunked", &Secret::new(long.clone())).unwrap();
         assert_eq!(store.get("chunked").unwrap().unwrap().expose(), long);
-        store.set("chunked", &Secret::new("short")).unwrap();
-        assert_eq!(store.get("chunked").unwrap().unwrap().expose(), "short");
+        // Da valore diviso a valore corto: le parti vecchie spariscono.
+        store
+            .set("chunked", &Secret::new("short:with:colons"))
+            .unwrap();
+        assert_eq!(
+            store.get("chunked").unwrap().unwrap().expose(),
+            "short:with:colons"
+        );
+        assert!(store.read("chunked#0").unwrap().is_none());
         store.delete("chunked").unwrap();
         assert!(store.get("chunked").unwrap().is_none());
     }

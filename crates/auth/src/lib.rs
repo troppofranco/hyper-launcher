@@ -7,11 +7,11 @@
 
 #[cfg(test)]
 mod flow_tests;
-pub mod msa;
+mod msa;
 mod secret;
 mod session;
 mod store;
-pub mod xbox;
+mod xbox;
 
 use std::path::Path;
 
@@ -23,10 +23,9 @@ use uuid::Uuid;
 pub use msa::{DeviceCode, Endpoints, MsaClient};
 pub use secret::Secret;
 pub use session::{Session, forget, login_microsoft, session};
-pub use store::{KeyringStore, MemoryStore, SecretStore};
-
-/// Servizio con cui il launcher registra le voci nel keyring.
-pub const KEYRING_SERVICE: &str = "hyper-launcher";
+#[cfg(test)]
+pub(crate) use store::MemoryStore;
+pub use store::{KEYRING_SERVICE, KeyringStore, SecretStore};
 
 #[derive(Debug, thiserror::Error)]
 pub enum AuthError {
@@ -43,7 +42,10 @@ pub enum AuthError {
     NoAccounts,
 
     #[error(
-        "no Microsoft client ID configured (msa_client_id in config.toml or HYPER_MSA_CLIENT_ID)"
+        "no Microsoft client ID configured. Register an app on portal.azure.com (App registrations, \
+         \"Personal Microsoft accounts only\", Authentication → \"Allow public client flows\" = Yes) \
+         and set its Application (client) ID as msa_client_id in config.toml or in HYPER_MSA_CLIENT_ID. \
+         Mojang must also approve the app for the Minecraft API before the login can complete"
     )]
     MissingClientId,
 
@@ -108,6 +110,17 @@ pub enum AuthError {
 
     #[error("keyring entry {0:?} is corrupted: sign in again")]
     CorruptSecret(String),
+}
+
+impl AuthError {
+    /// `true` se l'unico rimedio è rifare il login Microsoft dell'account:
+    /// ogni interfaccia può mostrare l'azione adatta senza elencare varianti.
+    pub fn requires_login(&self) -> bool {
+        matches!(
+            self,
+            Self::LoginExpired | Self::CorruptSecret(_) | Self::AccountMismatch
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -204,13 +217,37 @@ impl AccountStore {
         Ok(&self.accounts[index])
     }
 
-    /// Rimuove l'account e lo restituisce (per cancellarne i segreti con
-    /// [`forget`]). Se era il predefinito, il predefinito passa al primo rimasto.
-    pub fn remove(&mut self, name: &str) -> Result<Account, AuthError> {
+    /// Aggiunge un account appena autenticato e salva `accounts.toml`. Se il
+    /// salvataggio fallisce, cancella i suoi segreti: il keyring non deve
+    /// contenere token di account che il launcher non conosce.
+    pub fn add_and_save(
+        &mut self,
+        path: &Path,
+        account: Account,
+        secrets: &dyn SecretStore,
+    ) -> Result<(), AuthError> {
+        self.upsert(account.clone());
+        if let Err(e) = self.save(path) {
+            let _ = forget(&account, secrets);
+            return Err(e);
+        }
+        Ok(())
+    }
+
+    /// Rimuove un account: prima da `accounts.toml`, poi i suoi segreti. Se
+    /// il file non si salva, restano intatti sia l'account sia i token.
+    pub fn remove_and_save(
+        &mut self,
+        path: &Path,
+        name: &str,
+        secrets: &dyn SecretStore,
+    ) -> Result<Account, AuthError> {
         let account = self.accounts.remove(self.position(name)?);
         if self.is_default(&account) {
             self.default = self.accounts.first().map(|a| a.name().to_owned());
         }
+        self.save(path)?;
+        forget(&account, secrets)?;
         Ok(account)
     }
 
