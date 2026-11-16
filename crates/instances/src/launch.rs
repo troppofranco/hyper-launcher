@@ -31,11 +31,13 @@ pub struct LaunchCommand {
 }
 
 impl LaunchCommand {
-    /// Avvia il gioco ereditando stdout/stderr.
+    /// Avvia il gioco con lo stdout catturato (va letto, vedi
+    /// [`crate::RunningGame::wait`]) e lo stderr ereditato.
     pub fn spawn(&self) -> Result<Child> {
         Command::new(&self.program)
             .args(&self.args)
             .current_dir(&self.cwd)
+            .stdout(std::process::Stdio::piped())
             .spawn()
             .map_err(|source| InstanceError::Process {
                 program: self.program.clone(),

@@ -217,19 +217,28 @@ impl AccountStore {
         Ok(&self.accounts[index])
     }
 
-    /// Aggiunge un account appena autenticato e salva `accounts.toml`. Se il
-    /// salvataggio fallisce, cancella i suoi segreti: il keyring non deve
-    /// contenere token di account che il launcher non conosce.
+    /// Aggiunge (o sostituisce) un account e salva `accounts.toml`, tenendo
+    /// il keyring coerente col file:
+    /// - se il salvataggio fallisce, cancella i segreti del nuovo account;
+    /// - se riesce, cancella quelli degli account sostituiti (es. un account
+    ///   Microsoft rimpiazzato da uno offline con lo stesso nome).
+    ///
+    /// Il keyring non deve contenere token di account che il launcher non
+    /// conosce più.
     pub fn add_and_save(
         &mut self,
         path: &Path,
         account: Account,
         secrets: &dyn SecretStore,
     ) -> Result<(), AuthError> {
-        self.upsert(account.clone());
+        let replaced = self.upsert(account.clone());
         if let Err(e) = self.save(path) {
             let _ = forget(&account, secrets);
             return Err(e);
+        }
+        // Un nuovo login dello stesso account ha già sovrascritto i token.
+        for old in replaced.iter().filter(|old| old.uuid() != account.uuid()) {
+            forget(old, secrets)?;
         }
         Ok(())
     }
@@ -267,13 +276,19 @@ impl AccountStore {
     }
 
     /// Aggiunge (o sostituisce, confrontando i nomi senza distinzione di
-    /// maiuscole) un account. Il primo account diventa il predefinito.
-    pub fn upsert(&mut self, account: Account) {
+    /// maiuscole) un account e restituisce quelli sostituiti. Il primo
+    /// account diventa il predefinito. Dall'esterno si usa
+    /// [`Self::add_and_save`], che si occupa anche dei segreti.
+    fn upsert(&mut self, account: Account) -> Vec<Account> {
         // Stesso nome o stesso UUID (un account Microsoft che ha cambiato
         // nome) = stesso account.
-        self.accounts.retain(|a| {
-            !a.name().eq_ignore_ascii_case(account.name()) && a.uuid() != account.uuid()
-        });
+        let same = |a: &Account| {
+            a.name().eq_ignore_ascii_case(account.name()) || a.uuid() == account.uuid()
+        };
+        let (replaced, kept) = std::mem::take(&mut self.accounts)
+            .into_iter()
+            .partition(|a| same(a));
+        self.accounts = kept;
         // Il predefinito segue anche un cambio di maiuscole del nome.
         let replaces_default = self
             .default
@@ -283,6 +298,7 @@ impl AccountStore {
             self.default = Some(account.name().to_owned());
         }
         self.accounts.push(account);
+        replaced
     }
 
     pub fn find(&self, name: &str) -> Result<&Account, AuthError> {

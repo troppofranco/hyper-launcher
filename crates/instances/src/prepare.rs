@@ -3,6 +3,7 @@
 //! processo. Il lock resta vivo finché il gioco non termina.
 
 use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Child, ExitStatus};
 
@@ -10,6 +11,7 @@ use hyper_auth::Session;
 use hyper_core::Config;
 use hyper_installer::{InstalledVersion, Installer, InstallerError, StageProgressFn};
 
+use crate::console::{GameOutput, Log4jParser};
 use crate::launch::{LaunchCommand, LaunchOptions, build_command, prepare_natives};
 use crate::{Instance, InstanceError, Result};
 
@@ -111,7 +113,8 @@ pub async fn prepare_launch(
 }
 
 impl PreparedLaunch {
-    /// Avvia il gioco (stdout/stderr ereditati) trasferendo il lock.
+    /// Avvia il gioco trasferendo il lock. Lo stdout è catturato e va letto
+    /// con [`RunningGame::wait`]; lo stderr resta quello del launcher.
     pub fn spawn(self) -> Result<RunningGame> {
         let child = self.command.spawn()?;
         Ok(RunningGame {
@@ -123,11 +126,28 @@ impl PreparedLaunch {
 }
 
 impl RunningGame {
-    /// Attende la fine del gioco (bloccante) e rilascia il lock.
-    pub fn wait(mut self) -> Result<ExitStatus> {
-        self.child.wait().map_err(|source| InstanceError::Process {
-            program: self.program,
+    /// Legge l'output del gioco fino alla sua uscita, passando ogni riga
+    /// (eventi log4j già decodificati) a `on_output`; poi rilascia il lock.
+    /// Bloccante: in un contesto async va eseguita con `spawn_blocking`.
+    pub fn wait(mut self, mut on_output: impl FnMut(GameOutput)) -> Result<ExitStatus> {
+        let process_error = |source| InstanceError::Process {
+            program: self.program.clone(),
             source,
-        })
+        };
+        if let Some(stdout) = self.child.stdout.take() {
+            let mut parser = Log4jParser::new();
+            for line in BufReader::new(stdout).lines() {
+                // Righe non UTF-8 o pipe chiusa: si smette di leggere, ma si
+                // attende comunque l'uscita del processo.
+                let Ok(line) = line else { break };
+                if let Some(output) = parser.push_line(&line) {
+                    on_output(output);
+                }
+            }
+            if let Some(output) = parser.finish() {
+                on_output(output);
+            }
+        }
+        self.child.wait().map_err(process_error)
     }
 }

@@ -2,6 +2,7 @@
 //! costruzione del comando di avvio JVM e pipeline completa di avvio
 //! riusabile da CLI e UI.
 
+pub mod console;
 mod launch;
 mod prepare;
 

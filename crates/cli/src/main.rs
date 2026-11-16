@@ -168,8 +168,7 @@ async fn account(app: &App, cmd: AccountCommand) -> Result<()> {
         AccountCommand::AddOffline { name } => {
             let account = Account::offline(&name)?;
             println!("Account offline {} ({})", account.name(), account.uuid());
-            store.upsert(account);
-            store.save(&path)?;
+            store.add_and_save(&path, account, &KeyringStore::default())?;
         }
         AccountCommand::AddMicrosoft => {
             let msa = MsaClient::from_config(&app.config)?.ok_or(AuthError::MissingClientId)?;
@@ -311,7 +310,8 @@ async fn launch(
         account.kind()
     );
     let game = prepared.spawn()?;
-    let status = tokio::task::spawn_blocking(move || game.wait()).await??;
+    let status =
+        tokio::task::spawn_blocking(move || game.wait(|output| println!("{output}"))).await??;
     if status.success() {
         println!("Minecraft terminato correttamente.");
         Ok(())

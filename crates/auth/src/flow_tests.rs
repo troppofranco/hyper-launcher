@@ -345,3 +345,34 @@ async fn offline_session_is_not_secret() {
     assert!(session.access_token.is_none());
     assert_eq!(session.uuid, account.uuid());
 }
+
+#[test]
+fn replacing_microsoft_account_forgets_its_tokens() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("accounts.toml");
+    let store = MemoryStore::default();
+    let uuid = Uuid::parse_str(UUID_SIMPLE).unwrap();
+    let microsoft = Account::Microsoft {
+        name: "Notch".into(),
+        uuid,
+    };
+    store
+        .set(&format!("msa-refresh:{uuid}"), &Secret::new("refresh"))
+        .unwrap();
+
+    let mut accounts = crate::AccountStore::default();
+    accounts
+        .add_and_save(&path, microsoft.clone(), &store)
+        .unwrap();
+    // Un nuovo login dello stesso account non cancella i suoi token.
+    accounts.add_and_save(&path, microsoft, &store).unwrap();
+    assert_eq!(store.keys().len(), 1);
+
+    // Un account offline con lo stesso nome lo sostituisce: token cancellati.
+    accounts
+        .add_and_save(&path, Account::offline("Notch").unwrap(), &store)
+        .unwrap();
+    assert!(store.keys().is_empty());
+    assert_eq!(accounts.accounts().len(), 1);
+    assert_eq!(accounts.accounts()[0].kind(), "offline");
+}
