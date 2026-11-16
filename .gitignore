@@ -1,0 +1,38 @@
+# Rust
+/target/
+**/target/
+**/*.rs.bk
+*.pdb
+
+# Node / frontend
+node_modules/
+dist/
+build/
+.svelte-kit/
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/
+
+# Dati locali del launcher in sviluppo
+/.hyper-dev/
+
+# Ambiente / editor / OS
+.env
+.env.*
+!.env.example
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Claude Code locale
+.claude/settings.local.json

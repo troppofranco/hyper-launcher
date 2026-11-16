@@ -1,0 +1,12 @@
+[package]
+name = "hyper-sync"
+description = "Sincronizzazione impostazioni tra istanze (per ora: parser di options.txt)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

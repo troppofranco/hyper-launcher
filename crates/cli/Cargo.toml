@@ -1,0 +1,25 @@
+[package]
+name = "hyper-cli"
+description = "CLI headless di test per Hyper Launcher"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "hyper"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+hyper-auth.workspace = true
+hyper-core.workspace = true
+hyper-installer.workspace = true
+hyper-instances.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true
