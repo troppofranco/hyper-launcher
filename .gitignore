@@ -36,3 +36,6 @@ desktop.ini
 
 # Claude Code locale
 .claude/settings.local.json
+
+# Output dell installer (Inno Setup)
+/dist/
