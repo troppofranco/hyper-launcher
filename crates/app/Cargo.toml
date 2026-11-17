@@ -1,0 +1,37 @@
+[package]
+name = "hyper-app"
+description = "Hyper Launcher: applicazione grafica (Tauri 2)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "hyper-launcher"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.7", features = [] }
+
+[dependencies]
+anyhow.workspace = true
+hyper-auth.workspace = true
+hyper-core.workspace = true
+hyper-installer.workspace = true
+hyper-instances.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tauri = { version = "2.12", features = [] }
+tauri-plugin-opener = "2.7"
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[features]
+# Senza questa feature Tauri caricherebbe l'interfaccia dal server di
+# sviluppo; la build normale incorpora `ui/dist` nell'eseguibile.
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+[lints]
+workspace = true

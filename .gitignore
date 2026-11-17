@@ -39,3 +39,8 @@ desktop.ini
 
 # Output dell installer (Inno Setup)
 /dist/
+
+# Frontend
+/ui/node_modules/
+/ui/dist/
+/crates/app/gen/

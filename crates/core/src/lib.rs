@@ -9,7 +9,7 @@ mod paths;
 pub mod platform;
 mod safe_path;
 
-pub use config::Config;
+pub use config::{Config, MIN_MEMORY_MB};
 pub use error::CoreError;
 pub use paths::Paths;
 pub use safe_path::{safe_component, safe_join};

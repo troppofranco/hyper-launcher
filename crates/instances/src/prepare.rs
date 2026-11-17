@@ -51,7 +51,14 @@ pub async fn install(
     let entry = manifest
         .find(&instance.config.version)
         .ok_or_else(|| InstallerError::UnknownVersion(instance.config.version.clone()))?;
-    let installed = installer.install_version(entry, progress).await?;
+    let installed = match &instance.config.loader {
+        Some(loader) => {
+            installer
+                .install_with_loader(entry, loader, progress)
+                .await?
+        }
+        None => installer.install_version(entry, progress).await?,
+    };
     let java = match custom_java {
         Some(java) => java,
         None => {
@@ -68,6 +75,7 @@ pub async fn install(
 pub struct PreparedLaunch {
     pub command: LaunchCommand,
     pub installed: InstalledVersion,
+    instance: Instance,
     lock: File,
 }
 
@@ -76,6 +84,8 @@ pub struct PreparedLaunch {
 pub struct RunningGame {
     pub child: Child,
     program: PathBuf,
+    instance: Instance,
+    started: u64,
     _lock: File,
 }
 
@@ -108,6 +118,7 @@ pub async fn prepare_launch(
     Ok(PreparedLaunch {
         command,
         installed,
+        instance: instance.clone(),
         lock,
     })
 }
@@ -120,6 +131,8 @@ impl PreparedLaunch {
         Ok(RunningGame {
             child,
             program: self.command.program,
+            instance: self.instance,
+            started: hyper_core::unix_now(),
             _lock: self.lock,
         })
     }
@@ -127,7 +140,8 @@ impl PreparedLaunch {
 
 impl RunningGame {
     /// Legge l'output del gioco fino alla sua uscita, passando ogni riga
-    /// (eventi log4j già decodificati) a `on_output`; poi rilascia il lock.
+    /// (eventi log4j già decodificati) a `on_output`; poi registra il tempo
+    /// di gioco nell'istanza e rilascia il lock.
     /// Bloccante: in un contesto async va eseguita con `spawn_blocking`.
     pub fn wait(mut self, mut on_output: impl FnMut(GameOutput)) -> Result<ExitStatus> {
         let process_error = |source| InstanceError::Process {
@@ -148,6 +162,13 @@ impl RunningGame {
                 on_output(output);
             }
         }
-        self.child.wait().map_err(process_error)
+        let status = self.child.wait().map_err(process_error)?;
+        // Ricarica l'istanza dal disco: le impostazioni potrebbero essere
+        // cambiate mentre si giocava.
+        let mut instance = Instance::reload(&self.instance).unwrap_or(self.instance);
+        if let Err(e) = instance.record_session(self.started, hyper_core::unix_now()) {
+            tracing::warn!(error = %e, "cannot record playtime");
+        }
+        Ok(status)
     }
 }

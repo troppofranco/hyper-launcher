@@ -249,7 +249,10 @@ mod tests {
                 memory_mb: None,
                 java_path: None,
                 jvm_args: vec!["-XX:+UseZGC".into()],
+                loader: None,
                 created: 0,
+                last_played: None,
+                playtime_secs: 0,
             },
             dir: PathBuf::from("inst"),
         }

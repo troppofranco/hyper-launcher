@@ -28,12 +28,21 @@ impl Paths {
 
     /// `HYPER_LAUNCHER_HOME` se impostata, altrimenti la cartella dati
     /// dell'utente (`%APPDATA%\HyperLauncher` su Windows).
+    ///
+    /// La cartella viene creata e risolta nel suo percorso reale: con
+    /// cartelle reindirizzate (app pacchettizzate di Windows, OneDrive,
+    /// junction) i percorsi passati a Java devono coincidere con quelli che
+    /// Java stesso vede, altrimenti Fabric classifica male le librerie.
     pub fn from_env() -> Result<Self, CoreError> {
-        if let Some(home) = std::env::var_os(Self::HOME_ENV).filter(|v| !v.is_empty()) {
-            return Ok(Self::new(home));
-        }
-        let base = directories::BaseDirs::new().ok_or(CoreError::NoDataDir)?;
-        Ok(Self::new(base.data_dir().join("HyperLauncher")))
+        let root = match std::env::var_os(Self::HOME_ENV).filter(|v| !v.is_empty()) {
+            Some(home) => PathBuf::from(home),
+            None => directories::BaseDirs::new()
+                .ok_or(CoreError::NoDataDir)?
+                .data_dir()
+                .join("HyperLauncher"),
+        };
+        crate::fs::create_dir_all(&root)?;
+        Ok(Self::new(crate::fs::real_path(&root)?))
     }
 
     pub fn new(root: impl Into<PathBuf>) -> Self {

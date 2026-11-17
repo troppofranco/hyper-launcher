@@ -39,6 +39,45 @@ struct Asset {
     browser_download_url: String,
 }
 
+/// Numero di build incorporato in compilazione dalla GitHub Action (variabile
+/// `HYPER_BUILD`, uguale per tutti i binari); `None` nelle build locali, che
+/// non si aggiornano mai da sole.
+pub fn current_build() -> Option<u64> {
+    option_env!("HYPER_BUILD").and_then(|b| b.parse().ok())
+}
+
+/// Repository GitHub (`owner/nome`) da cui arrivano gli aggiornamenti.
+pub fn update_repo() -> Option<&'static str> {
+    option_env!("HYPER_UPDATE_REPO").filter(|r| !r.is_empty())
+}
+
+/// Aggiornamento disponibile per questa build; `None` se aggiornati o in
+/// una build di sviluppo.
+pub async fn available() -> Result<Option<AvailableUpdate>> {
+    match (current_build(), update_repo()) {
+        (Some(build), Some(repo)) => check(&latest_release_url(repo), build).await,
+        _ => Ok(None),
+    }
+}
+
+/// Flusso completo: se c'è una build più nuova ne scarica e verifica il
+/// setup in `dir`, lo avvia in modo silenzioso e restituisce la build;
+/// il chiamante deve poi uscire. Pulisce comunque i setup vecchi.
+pub async fn update_to_latest(
+    downloader: &Downloader,
+    dir: &Path,
+    relaunch: bool,
+) -> Result<Option<u64>> {
+    let Some(update) = available().await? else {
+        clean_old_setups(dir, None);
+        return Ok(None);
+    };
+    let setup = download(downloader, &update, dir).await?;
+    clean_old_setups(dir, Some(&setup));
+    run_installer(&setup, relaunch)?;
+    Ok(Some(update.build))
+}
+
 /// URL dell'API GitHub per l'ultima release di `repo` (`owner/nome`).
 pub fn latest_release_url(repo: &str) -> String {
     format!("https://api.github.com/repos/{repo}/releases/latest")
@@ -112,14 +151,19 @@ pub async fn download(
 
 /// Avvia il setup in modo silenzioso e non attende: il chiamante deve
 /// uscire subito, così il setup può sostituire l'eseguibile in uso.
-pub fn run_installer(setup: &Path) -> Result<()> {
-    std::process::Command::new(setup)
-        .args([
-            "/VERYSILENT",
-            "/SUPPRESSMSGBOXES",
-            "/NORESTART",
-            "/CLOSEAPPLICATIONS",
-        ])
+/// Con `relaunch` l'installer riapre l'app grafica a fine aggiornamento.
+pub fn run_installer(setup: &Path, relaunch: bool) -> Result<()> {
+    let mut command = std::process::Command::new(setup);
+    command.args([
+        "/VERYSILENT",
+        "/SUPPRESSMSGBOXES",
+        "/NORESTART",
+        "/CLOSEAPPLICATIONS",
+    ]);
+    if relaunch {
+        command.arg("/relaunch=1");
+    }
+    command
         .spawn()
         .map_err(|e| hyper_core::CoreError::io(setup, e))?;
     Ok(())

@@ -8,9 +8,10 @@ use hyper_core::{Paths, fs};
 use crate::assets::AssetIndex;
 use crate::download::Progress;
 use crate::java::{self, RuntimeIndex, RuntimeManifest};
+use crate::loader::LoaderSpec;
 use crate::manifest::{ManifestVersion, VERSION_MANIFEST_URL, VersionManifest};
 use crate::version::{RuleContext, VersionJson};
-use crate::{DownloadTask, Downloader, InstallerError, Result};
+use crate::{DownloadTask, Downloader, InstallerError, Result, Sha1Hex};
 
 /// Fase di installazione, per i report di avanzamento.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -19,6 +20,17 @@ pub enum Stage {
     Libraries,
     Assets,
     Java,
+}
+
+impl Stage {
+    /// Nome stabile della fase (`libraries`, `assets`, `java`).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Libraries => "libraries",
+            Self::Assets => "assets",
+            Self::Java => "java",
+        }
+    }
 }
 
 pub type StageProgressFn<'a> = &'a (dyn Fn(Stage, Progress) + Sync);
@@ -62,9 +74,9 @@ impl InstalledVersion {
 
 #[derive(Debug, Clone)]
 pub struct Installer {
-    paths: Paths,
-    downloader: Downloader,
-    ctx: RuleContext,
+    pub(crate) paths: Paths,
+    pub(crate) downloader: Downloader,
+    pub(crate) ctx: RuleContext,
 }
 
 impl Installer {
@@ -74,6 +86,10 @@ impl Installer {
             downloader: Downloader::new(concurrency)?,
             ctx: RuleContext::current(),
         })
+    }
+
+    pub fn downloader(&self) -> &Downloader {
+        &self.downloader
     }
 
     pub fn paths(&self) -> &Paths {
@@ -87,16 +103,27 @@ impl Installer {
     /// Scarica il version manifest; se la rete non è disponibile usa
     /// l'ultima copia salvata.
     pub async fn fetch_manifest(&self) -> Result<VersionManifest> {
-        let cache = self.paths.version_manifest_cache();
-        match self.downloader.get_bytes(VERSION_MANIFEST_URL).await {
+        self.fetch_json_cached(VERSION_MANIFEST_URL, &self.paths.version_manifest_cache())
+            .await
+    }
+
+    /// Scarica un JSON e ne salva una copia; se la rete non risponde usa
+    /// l'ultima copia salvata. Solo gli errori di rete ricadono sulla cache:
+    /// un JSON malformato deve emergere.
+    pub(crate) async fn fetch_json_cached<T: serde::de::DeserializeOwned>(
+        &self,
+        url: &str,
+        cache: &Path,
+    ) -> Result<T> {
+        match self.downloader.get_bytes(url).await {
             Ok(bytes) => {
-                let manifest = parse_json(&bytes, VERSION_MANIFEST_URL)?;
-                fs::write_atomic(&cache, &bytes)?;
-                Ok(manifest)
+                let value = parse_json(&bytes, url)?;
+                fs::write_atomic(cache, &bytes)?;
+                Ok(value)
             }
             Err(e @ InstallerError::Http { .. }) if cache.is_file() => {
-                tracing::warn!(error = %e, "cannot reach Mojang, using cached version manifest");
-                read_json(&cache)
+                tracing::warn!(error = %e, url, "network unavailable, using cached copy");
+                read_json(cache)
             }
             Err(e) => Err(e),
         }
@@ -108,6 +135,26 @@ impl Installer {
         entry: &ManifestVersion,
         progress: Option<StageProgressFn<'_>>,
     ) -> Result<InstalledVersion> {
+        let version = self.vanilla_version(entry).await?;
+        self.install_resolved(version, progress).await
+    }
+
+    /// Come [`Self::install_version`], con un mod loader sopra la versione
+    /// vanilla: il profilo del loader viene fuso sulla version JSON di Mojang.
+    pub async fn install_with_loader(
+        &self,
+        entry: &ManifestVersion,
+        loader: &LoaderSpec,
+        progress: Option<StageProgressFn<'_>>,
+    ) -> Result<InstalledVersion> {
+        let vanilla = self.vanilla_version(entry).await?;
+        let profile = self.loader_profile(loader, &entry.id).await?;
+        self.install_resolved(profile.inherit(vanilla), progress)
+            .await
+    }
+
+    /// Version JSON di Mojang, scaricata e verificata con lo SHA1 del manifest.
+    async fn vanilla_version(&self, entry: &ManifestVersion) -> Result<VersionJson> {
         let json_path = self
             .downloader
             .fetch(DownloadTask::new(
@@ -118,15 +165,26 @@ impl Installer {
             ))
             .await?;
         let version: VersionJson = read_json(&json_path)?;
+        if version.id != entry.id {
+            return Err(InstallerError::UnsupportedVersion {
+                version: version.id,
+                reason: "version JSON id differs from manifest id".into(),
+            });
+        }
+        Ok(version)
+    }
+
+    async fn install_resolved(
+        &self,
+        version: VersionJson,
+        progress: Option<StageProgressFn<'_>>,
+    ) -> Result<InstalledVersion> {
         let unsupported = |reason: &str| InstallerError::UnsupportedVersion {
             version: version.id.clone(),
             reason: reason.to_owned(),
         };
-        if version.id != entry.id {
-            return Err(unsupported("version JSON id differs from manifest id"));
-        }
         if version.inherits_from.is_some() {
-            return Err(unsupported("inheritsFrom is not supported yet"));
+            return Err(unsupported("inheritsFrom must be resolved first"));
         }
         let client = &version
             .downloads
@@ -157,8 +215,8 @@ impl Installer {
         }
 
         let mut tasks = Vec::new();
-        let (mut classpath, natives) = self.library_tasks(&version, &mut tasks)?;
-        let client_jar = self.paths.version_jar(&version.id)?;
+        let (mut classpath, natives) = self.library_tasks(&version, &mut tasks).await?;
+        let client_jar = self.paths.version_jar(version.jar_id())?;
         tasks.push(client.task(client_jar.clone()));
         classpath.push(client_jar);
 
@@ -202,7 +260,7 @@ impl Installer {
 
     /// Aggiunge a `tasks` le librerie consentite su questa piattaforma e
     /// restituisce classpath (senza duplicati) e jar di native.
-    fn library_tasks(
+    async fn library_tasks(
         &self,
         version: &VersionJson,
         tasks: &mut Vec<DownloadTask>,
@@ -213,6 +271,14 @@ impl Installer {
         let mut natives = Vec::new();
 
         for library in version.libraries.iter().filter(|l| l.allowed(&self.ctx)) {
+            if library.downloads.is_none() && library.url.is_some() {
+                let task = self.maven_library_task(library, &libraries_dir).await?;
+                if seen.insert(task.path.clone()) {
+                    classpath.push(task.path.clone());
+                }
+                tasks.push(task);
+                continue;
+            }
             let artifact = library.downloads.as_ref().and_then(|d| d.artifact.as_ref());
             let native = library.native_artifact(&self.ctx);
             if artifact.is_none() && native.is_none() {
@@ -239,6 +305,33 @@ impl Installer {
             }
         }
         Ok((classpath, natives))
+    }
+
+    /// Libreria nel formato dei mod loader (`name` + `url` di un repository
+    /// Maven). L'hash viene dal profilo; se manca, dal file `<jar>.sha1`
+    /// pubblicato dallo stesso repository. Mai un file senza hash.
+    async fn maven_library_task(
+        &self,
+        library: &crate::version::Library,
+        libraries_dir: &Path,
+    ) -> Result<DownloadTask> {
+        let unsupported = || InstallerError::UnsupportedLibrary(library.name.clone());
+        let repo = library.url.as_deref().ok_or_else(unsupported)?;
+        // Solo HTTPS: l'hash del sidecar viene dallo stesso server.
+        if !repo.starts_with("https://") {
+            return Err(unsupported());
+        }
+        let relative = crate::version::maven_path(&library.name).ok_or_else(unsupported)?;
+        let path = hyper_core::safe_join(libraries_dir, &relative)?;
+        let url = format!("{}/{relative}", repo.trim_end_matches('/'));
+        let sha1 = match &library.sha1 {
+            Some(sha1) => sha1.clone(),
+            None => {
+                let text = self.downloader.get_bytes(&format!("{url}.sha1")).await?;
+                parse_sha1_sidecar(&text)?
+            }
+        };
+        Ok(DownloadTask::new(url, path, sha1, library.size))
     }
 
     /// Installa (o ri-verifica) il runtime Java Mojang `component` e
@@ -311,7 +404,7 @@ fn stage_reporter(
     }
 }
 
-fn parse_json<T: serde::de::DeserializeOwned>(
+pub(crate) fn parse_json<T: serde::de::DeserializeOwned>(
     bytes: &[u8],
     origin: impl std::fmt::Display,
 ) -> Result<T> {
@@ -321,6 +414,34 @@ fn parse_json<T: serde::de::DeserializeOwned>(
     })
 }
 
-fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T> {
+pub(crate) fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T> {
     parse_json(&fs::read(path)?, path.display())
+}
+
+/// Primo campo di un file `.sha1` di Maven (`<hash>` o `<hash>  <nome>`).
+fn parse_sha1_sidecar(bytes: &[u8]) -> Result<Sha1Hex> {
+    String::from_utf8_lossy(bytes)
+        .split_whitespace()
+        .next()
+        .unwrap_or_default()
+        .parse()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_maven_sha1_sidecars() {
+        let hash = "7c7f9831e9f27b303d5d08decb5f4258a9f03296";
+        assert_eq!(parse_sha1_sidecar(hash.as_bytes()).unwrap().as_str(), hash);
+        assert_eq!(
+            parse_sha1_sidecar(format!("{hash}  fabric-loader.jar\n").as_bytes())
+                .unwrap()
+                .as_str(),
+            hash
+        );
+        assert!(parse_sha1_sidecar(b"<html>302 Found</html>").is_err());
+        assert!(parse_sha1_sidecar(b"").is_err());
+    }
 }

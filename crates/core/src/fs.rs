@@ -10,6 +10,23 @@ pub fn create_dir_all(path: &Path) -> Result<(), CoreError> {
     std::fs::create_dir_all(path).map_err(|e| CoreError::io(path, e))
 }
 
+/// Percorso reale (link e reindirizzamenti risolti) di un file esistente,
+/// nella forma normale `C:\…` invece di quella estesa `\\?\C:\…` che
+/// `canonicalize` restituisce su Windows e che Java non accetta.
+pub fn real_path(path: &Path) -> Result<PathBuf, CoreError> {
+    let real = std::fs::canonicalize(path).map_err(|e| CoreError::io(path, e))?;
+    Ok(strip_verbatim(real))
+}
+
+fn strip_verbatim(path: PathBuf) -> PathBuf {
+    let text = path.to_string_lossy();
+    match text.strip_prefix(r"\\?\") {
+        // Solo `\\?\C:\…`: le forme UNC (`\\?\UNC\…`) restano come sono.
+        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => PathBuf::from(rest),
+        _ => path,
+    }
+}
+
 pub fn read(path: &Path) -> Result<Vec<u8>, CoreError> {
     std::fs::read(path).map_err(|e| CoreError::io(path, e))
 }
@@ -96,5 +113,22 @@ mod tests {
         write_atomic(&path, b"two").unwrap();
         assert_eq!(std::fs::read(&path).unwrap(), b"two");
         assert!(!sibling_with_suffix(&path, "tmp").exists());
+    }
+
+    #[test]
+    fn real_path_is_absolute_and_not_verbatim() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = real_path(dir.path()).unwrap();
+        assert!(real.is_absolute());
+        assert!(!real.to_string_lossy().starts_with(r"\\?\"));
+        assert!(real.is_dir());
+        assert_eq!(
+            strip_verbatim(PathBuf::from(r"\\?\C:\Users\x")),
+            PathBuf::from(r"C:\Users\x")
+        );
+        assert_eq!(
+            strip_verbatim(PathBuf::from(r"\\?\UNC\server\share")),
+            PathBuf::from(r"\\?\UNC\server\share")
+        );
     }
 }

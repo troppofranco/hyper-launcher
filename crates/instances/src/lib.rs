@@ -3,19 +3,21 @@
 //! riusabile da CLI e UI.
 
 pub mod console;
+mod content;
 mod launch;
 mod prepare;
 
 use std::path::{Path, PathBuf};
 
 use hyper_core::{Config, CoreError, Paths, fs};
+use hyper_installer::LoaderSpec;
 use serde::{Deserialize, Serialize};
 
+pub use content::{ModFile, World};
 pub use launch::{LaunchCommand, LaunchOptions, build_command, prepare_natives};
 pub use prepare::{PreparedLaunch, RunningGame, install, prepare_launch, resolve_java};
 
-/// Sotto questa soglia la JVM non riesce nemmeno ad avviare il gioco.
-pub const MIN_MEMORY_MB: u32 = 512;
+pub use hyper_core::MIN_MEMORY_MB;
 
 #[derive(Debug, thiserror::Error)]
 pub enum InstanceError {
@@ -40,6 +42,12 @@ pub enum InstanceError {
 
     #[error("Java not found: {0}")]
     JavaNotFound(PathBuf),
+
+    #[error("{0:?} is not a mod file (.jar or .jar.disabled)")]
+    InvalidModFile(String),
+
+    #[error("{0} already exists: remove one of the two copies from the mods folder")]
+    ModConflict(String),
 
     #[error("game process error ({program}): {source}")]
     Process {
@@ -72,8 +80,17 @@ pub struct InstanceConfig {
     /// Argomenti JVM aggiuntivi.
     #[serde(default)]
     pub jvm_args: Vec<String>,
+    /// Mod loader; assente = vanilla.
+    #[serde(default)]
+    pub loader: Option<LoaderSpec>,
     /// Secondi dall'epoch Unix.
     pub created: u64,
+    /// Fine dell'ultima sessione di gioco (secondi dall'epoch Unix).
+    #[serde(default)]
+    pub last_played: Option<u64>,
+    /// Tempo di gioco totale in secondi.
+    #[serde(default)]
+    pub playtime_secs: u64,
 }
 
 impl InstanceConfig {
@@ -133,6 +150,19 @@ impl Instance {
         Ok(fs::write_toml(&Self::config_path(&self.dir), &self.config)?)
     }
 
+    /// Registra una sessione di gioco terminata e salva `instance.toml`.
+    pub fn record_session(&mut self, started: u64, ended: u64) -> Result<()> {
+        self.config.playtime_secs += ended.saturating_sub(started);
+        self.config.last_played = Some(ended);
+        self.save()
+    }
+
+    /// Rilegge da disco la stessa istanza.
+    pub fn reload(instance: &Instance) -> Result<Instance> {
+        Self::load_from(instance.dir.clone())?
+            .ok_or_else(|| InstanceError::NotFound(instance.config.name.clone()))
+    }
+
     /// `None` se la cartella non contiene un `instance.toml`.
     fn load_from(dir: PathBuf) -> Result<Option<Self>> {
         let path = Self::config_path(&dir);
@@ -156,12 +186,16 @@ impl InstanceManager {
 
     /// Crea cartella isolata e `instance.toml`. Il nome deve essere un nome
     /// di cartella sicuro (validato con `safe_component`).
-    pub fn create(&self, name: &str, version: &str) -> Result<Instance> {
+    pub fn create(
+        &self,
+        name: &str,
+        version: &str,
+        loader: Option<LoaderSpec>,
+    ) -> Result<Instance> {
         let dir = self.paths.instance_dir(name)?;
         if dir.exists() {
             return Err(InstanceError::AlreadyExists(name.to_owned()));
         }
-        let created = hyper_core::unix_now();
         let instance = Instance {
             config: InstanceConfig {
                 name: name.to_owned(),
@@ -169,13 +203,61 @@ impl InstanceManager {
                 memory_mb: None,
                 java_path: None,
                 jvm_args: Vec::new(),
-                created,
+                loader,
+                created: hyper_core::unix_now(),
+                last_played: None,
+                playtime_secs: 0,
             },
             dir,
         };
         fs::create_dir_all(&instance.game_dir())?;
         instance.save()?;
         Ok(instance)
+    }
+
+    /// Come [`Self::create`], ma con nome vuoto ne sceglie uno automatico
+    /// ("Fabric 26.3", "Minecraft 26.3", poi "… (2)", "… (3)" se occupato).
+    pub fn create_named(
+        &self,
+        name: &str,
+        version: &str,
+        loader: Option<LoaderSpec>,
+    ) -> Result<Instance> {
+        let name = match name.trim() {
+            "" => self.unique_name(&match &loader {
+                Some(l) => format!("{} {version}", l.kind.display_name()),
+                None => format!("Minecraft {version}"),
+            })?,
+            name => name.to_owned(),
+        };
+        self.create(&name, version, loader)
+    }
+
+    /// `base`, oppure `base (2)`, `base (3)`… se una cartella con quel nome
+    /// (ignorando le maiuscole, come Windows) esiste già.
+    fn unique_name(&self, base: &str) -> Result<String> {
+        let taken = |name: &str| -> Result<bool> {
+            let dir = self.paths.instance_dir(name)?;
+            Ok(dir.exists())
+        };
+        let mut name = base.to_owned();
+        let mut n = 2;
+        while taken(&name)? {
+            name = format!("{base} ({n})");
+            n += 1;
+        }
+        Ok(name)
+    }
+
+    /// Elimina per sempre un'istanza (mondi compresi). Rifiuta se è in uso
+    /// da questo o da un altro processo.
+    pub fn delete(&self, name: &str) -> Result<()> {
+        let instance = self.load(name)?;
+        let lock = instance.try_lock()?;
+        // Il lock va rilasciato prima: su Windows un file aperto non si cancella.
+        drop(lock);
+        fs::remove_dir_all_if_exists(&instance.dir)?;
+        Ok(())
     }
 
     pub fn load(&self, name: &str) -> Result<Instance> {
@@ -215,17 +297,17 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let manager = InstanceManager::new(Paths::new(dir.path()));
 
-        let created = manager.create("survival", "1.21.4").unwrap();
+        let created = manager.create("survival", "1.21.4", None).unwrap();
         assert!(created.game_dir().is_dir());
         assert!(created.dir.join("instance.toml").is_file());
-        manager.create("alpha", "1.20.1").unwrap();
+        manager.create("alpha", "1.20.1", None).unwrap();
         std::fs::create_dir_all(dir.path().join("instances").join("not-an-instance")).unwrap();
 
         assert!(matches!(
-            manager.create("survival", "1.21.4"),
+            manager.create("survival", "1.21.4", None),
             Err(InstanceError::AlreadyExists(_))
         ));
-        assert!(manager.create("../escape", "1.21.4").is_err());
+        assert!(manager.create("../escape", "1.21.4", None).is_err());
         assert!(matches!(
             manager.load("missing"),
             Err(InstanceError::NotFound(_))
@@ -251,7 +333,7 @@ mod tests {
     fn memory_validation() {
         let dir = tempfile::tempdir().unwrap();
         let mut instance = InstanceManager::new(Paths::new(dir.path()))
-            .create("m", "1.21.4")
+            .create("m", "1.21.4", None)
             .unwrap();
         let config = Config::default();
         assert_eq!(
@@ -262,6 +344,37 @@ mod tests {
         assert!(matches!(
             instance.config.effective_memory_mb(&config),
             Err(InstanceError::MemoryTooLow { mb: 128 })
+        ));
+    }
+
+    #[test]
+    fn automatic_names_and_delete() {
+        let dir = tempfile::tempdir().unwrap();
+        let manager = InstanceManager::new(Paths::new(dir.path()));
+        let fabric = LoaderSpec {
+            kind: hyper_installer::LoaderKind::Fabric,
+            version: "0.20.1".into(),
+        };
+        let a = manager
+            .create_named("", "26.3", Some(fabric.clone()))
+            .unwrap();
+        let b = manager.create_named("  ", "26.3", Some(fabric)).unwrap();
+        let c = manager.create_named("", "26.3", None).unwrap();
+        assert_eq!(a.config.name, "Fabric 26.3");
+        assert_eq!(b.config.name, "Fabric 26.3 (2)");
+        assert_eq!(c.config.name, "Minecraft 26.3");
+
+        let lock = a.try_lock().unwrap();
+        assert!(matches!(
+            manager.delete("Fabric 26.3"),
+            Err(InstanceError::Busy(_))
+        ));
+        drop(lock);
+        manager.delete("Fabric 26.3").unwrap();
+        assert!(!a.dir.exists());
+        assert!(matches!(
+            manager.load("Fabric 26.3"),
+            Err(InstanceError::NotFound(_))
         ));
     }
 }

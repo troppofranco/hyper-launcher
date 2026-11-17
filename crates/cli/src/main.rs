@@ -11,7 +11,7 @@ use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 use hyper_auth::{Account, AccountStore, AuthError, KeyringStore, MsaClient};
 use hyper_core::{Config, Paths};
-use hyper_installer::{Installer, VersionKind};
+use hyper_installer::{Installer, LoaderKind, LoaderSpec, VersionKind};
 use hyper_instances::InstanceManager;
 
 use crate::progress::ProgressView;
@@ -90,6 +90,12 @@ enum InstanceCommand {
         /// Id versione, `latest` o `latest-snapshot`.
         #[arg(long, default_value = "latest")]
         version: String,
+        /// Mod loader: `fabric` (assente = vanilla).
+        #[arg(long)]
+        loader: Option<LoaderArg>,
+        /// Versione del loader (default: l'ultima stabile).
+        #[arg(long, requires = "loader")]
+        loader_version: Option<String>,
     },
     /// Elenca le istanze.
     List,
@@ -215,6 +221,9 @@ async fn account(app: &App, cmd: AccountCommand) -> Result<()> {
             let account = hyper_auth::login_microsoft(&msa, &secrets, &code).await?;
             let (name, uuid) = (account.name().to_owned(), account.uuid());
             store.add_and_save(&path, account, &secrets)?;
+            // Come nell'app: l'account appena collegato diventa quello attivo.
+            store.set_default(&name)?;
+            store.save(&path)?;
             println!(
                 "Account Microsoft {name} ({uuid}) aggiunto. Token salvati nel keyring di sistema."
             );
@@ -240,18 +249,58 @@ async fn account(app: &App, cmd: AccountCommand) -> Result<()> {
     Ok(())
 }
 
+/// Mod loader selezionabili da riga di comando.
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum LoaderArg {
+    Fabric,
+}
+
+impl From<LoaderArg> for LoaderKind {
+    fn from(arg: LoaderArg) -> Self {
+        match arg {
+            LoaderArg::Fabric => LoaderKind::Fabric,
+        }
+    }
+}
+
+/// "Minecraft 26.3" oppure "Fabric 0.20.1 · Minecraft 26.3".
+fn describe(config: &hyper_instances::InstanceConfig) -> String {
+    match &config.loader {
+        Some(l) => format!(
+            "{} {} · Minecraft {}",
+            l.kind.display_name(),
+            l.version,
+            config.version
+        ),
+        None => format!("Minecraft {}", config.version),
+    }
+}
+
 async fn instance(app: &App, cmd: InstanceCommand) -> Result<()> {
     match cmd {
-        InstanceCommand::Create { name, version } => {
-            let manifest = app.installer()?.fetch_manifest().await?;
+        InstanceCommand::Create {
+            name,
+            version,
+            loader,
+            loader_version,
+        } => {
+            let installer = app.installer()?;
+            let manifest = installer.fetch_manifest().await?;
             let entry = manifest
                 .resolve(&version)
                 .with_context(|| format!("versione {version:?} non trovata"))?;
-            let instance = app.instances().create(&name, &entry.id)?;
+            let loader = match loader.map(LoaderKind::from) {
+                None => None,
+                Some(kind) => Some(match loader_version {
+                    Some(version) => LoaderSpec { kind, version },
+                    None => installer.latest_loader(kind, &entry.id).await?,
+                }),
+            };
+            let instance = app.instances().create(&name, &entry.id, loader)?;
             println!(
-                "Istanza {:?} creata (Minecraft {}) in {}",
+                "Istanza {:?} creata ({}) in {}",
                 instance.config.name,
-                instance.config.version,
+                describe(&instance.config),
                 instance.dir.display()
             );
         }
@@ -263,7 +312,7 @@ async fn instance(app: &App, cmd: InstanceCommand) -> Result<()> {
                 );
             }
             for i in instances {
-                println!("{:<24} {}", i.config.name, i.config.version);
+                println!("{:<24} {}", i.config.name, describe(&i.config));
             }
         }
     }

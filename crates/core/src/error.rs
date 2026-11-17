@@ -24,6 +24,9 @@ pub enum CoreError {
 
     #[error("unsafe path {0:?}")]
     UnsafePath(String),
+
+    #[error("invalid setting: {0}")]
+    InvalidConfig(String),
 }
 
 impl CoreError {

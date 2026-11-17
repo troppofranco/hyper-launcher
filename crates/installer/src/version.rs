@@ -25,8 +25,82 @@ pub struct VersionJson {
     pub minecraft_arguments: Option<String>,
     pub java_version: Option<JavaVersion>,
     pub logging: Option<Logging>,
-    /// Presente nei profili dei mod loader; non supportato in questa fase.
+    /// Presente nei profili dei mod loader: la versione vanilla da estendere
+    /// (vedi [`VersionJson::inherit`]).
     pub inherits_from: Option<String>,
+    /// Id della versione di cui usare il client jar; impostato da
+    /// [`VersionJson::inherit`] (i profili dei loader non hanno un jar proprio).
+    #[serde(skip)]
+    pub jar: Option<String>,
+}
+
+impl VersionJson {
+    /// Id della versione il cui `<id>.jar` va nel classpath.
+    pub fn jar_id(&self) -> &str {
+        self.jar.as_deref().unwrap_or(&self.id)
+    }
+
+    /// Fonde questo profilo (figlio, es. Fabric) sulla versione da cui
+    /// eredita, come fa il launcher ufficiale: `id`, `mainClass` e tipo del
+    /// figlio; librerie del figlio prima di quelle del padre (a parità di
+    /// `gruppo:nome[:classifier]` vince il figlio); argomenti accodati; il
+    /// resto (asset, client, Java, logging) dal padre se il figlio non lo
+    /// ridefinisce.
+    pub fn inherit(self, parent: VersionJson) -> VersionJson {
+        let child_keys: HashSet<String> = self.libraries.iter().map(|l| l.identity_key()).collect();
+        let mut libraries = self.libraries;
+        libraries.extend(
+            parent
+                .libraries
+                .into_iter()
+                .filter(|l| !child_keys.contains(&l.identity_key())),
+        );
+        let arguments = match (parent.arguments, self.arguments) {
+            (Some(mut p), Some(c)) => {
+                p.game.extend(c.game);
+                p.jvm.extend(c.jvm);
+                Some(p)
+            }
+            (p, c) => c.or(p),
+        };
+        VersionJson {
+            jar: Some(parent.jar.unwrap_or(parent.id)),
+            id: self.id,
+            kind: self.kind,
+            main_class: self.main_class,
+            asset_index: self.asset_index.or(parent.asset_index),
+            downloads: self.downloads.or(parent.downloads),
+            libraries,
+            arguments,
+            minecraft_arguments: self.minecraft_arguments.or(parent.minecraft_arguments),
+            java_version: self.java_version.or(parent.java_version),
+            logging: self.logging.or(parent.logging),
+            inherits_from: parent.inherits_from,
+        }
+    }
+}
+
+/// Percorso relativo nel repository Maven per una coordinata
+/// `gruppo:nome:versione[:classifier][@estensione]`, es.
+/// `net.fabricmc:fabric-loader:0.20.1` →
+/// `net/fabricmc/fabric-loader/0.20.1/fabric-loader-0.20.1.jar`.
+/// Il risultato va comunque validato con `safe_join` prima dell'uso.
+pub fn maven_path(coordinate: &str) -> Option<String> {
+    let (coords, ext) = coordinate.split_once('@').unwrap_or((coordinate, "jar"));
+    let mut parts = coords.split(':');
+    let (group, artifact, version) = (parts.next()?, parts.next()?, parts.next()?);
+    let classifier = parts.next();
+    if parts.next().is_some() || [group, artifact, version, ext].iter().any(|p| p.is_empty()) {
+        return None;
+    }
+    let file = match classifier {
+        Some(c) => format!("{artifact}-{version}-{c}.{ext}"),
+        None => format!("{artifact}-{version}.{ext}"),
+    };
+    Some(format!(
+        "{}/{artifact}/{version}/{file}",
+        group.replace('.', "/")
+    ))
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -70,6 +144,23 @@ pub struct Library {
     /// Legacy: OS → classifier (es. `"windows": "natives-windows-${arch}"`).
     pub natives: Option<HashMap<String, String>>,
     pub extract: Option<Extract>,
+    /// Formato dei mod loader (Fabric): repository Maven da cui scaricare
+    /// `name`, con hash e dimensione facoltativi accanto.
+    pub url: Option<String>,
+    pub sha1: Option<Sha1Hex>,
+    pub size: Option<u64>,
+}
+
+impl Library {
+    /// `gruppo:nome[:classifier]` senza versione: identifica "la stessa
+    /// libreria" quando un profilo ne ridefinisce una del padre.
+    fn identity_key(&self) -> String {
+        let mut parts: Vec<&str> = self.name.split(':').collect();
+        if parts.len() >= 3 {
+            parts.remove(2);
+        }
+        parts.join(":")
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -383,5 +474,80 @@ mod tests {
         );
         assert!(lib.native_artifact(&ctx("linux", "x86_64")).is_none());
         assert_eq!(lib.extract_excludes(), ["META-INF/"]);
+    }
+
+    #[test]
+    fn maven_coordinates_to_paths() {
+        assert_eq!(
+            maven_path("net.fabricmc:fabric-loader:0.20.1").unwrap(),
+            "net/fabricmc/fabric-loader/0.20.1/fabric-loader-0.20.1.jar"
+        );
+        assert_eq!(
+            maven_path("org.lwjgl:lwjgl:3.3.3:natives-windows").unwrap(),
+            "org/lwjgl/lwjgl/3.3.3/lwjgl-3.3.3-natives-windows.jar"
+        );
+        assert_eq!(maven_path("a.b:c:1@zip").unwrap(), "a/b/c/1/c-1.zip");
+        for bad in ["only:two", "a::1", "a:b:c:d:e", ""] {
+            assert!(maven_path(bad).is_none(), "{bad:?}");
+        }
+        // I tentativi di traversal producono un percorso che safe_join rifiuta.
+        let evil = maven_path("..:..:..").unwrap();
+        assert!(hyper_core::safe_join(Path::new("libs"), &evil).is_err());
+    }
+
+    /// Profilo Fabric reale (ridotto) per 26.3.
+    const FABRIC: &str = r#"{"id":"fabric-loader-0.20.1-26.3","inheritsFrom":"26.3","type":"release",
+        "mainClass":"net.fabricmc.loader.impl.launch.knot.KnotClient",
+        "arguments":{"game":[],"jvm":["-DFabricMcEmu= net.minecraft.client.main.Main "]},
+        "libraries":[
+          {"name":"org.ow2.asm:asm:9.10.1","url":"https://maven.fabricmc.net/",
+           "sha1":"ada2141c0cc52ee8f5c48cd5fa4ce0e794f22236","size":126151},
+          {"name":"net.fabricmc:fabric-loader:0.20.1","url":"https://maven.fabricmc.net/"}]}"#;
+
+    #[test]
+    fn fabric_profile_inherits_from_vanilla() {
+        let child: VersionJson = serde_json::from_str(FABRIC).unwrap();
+        assert_eq!(child.inherits_from.as_deref(), Some("26.3"));
+        assert_eq!(child.libraries[0].size, Some(126151));
+        assert!(child.libraries[0].sha1.is_some());
+        assert!(child.libraries[1].sha1.is_none());
+
+        let mut parent: VersionJson = serde_json::from_str(MODERN).unwrap();
+        parent.id = "26.3".into();
+        // Una libreria del padre che il figlio ridefinisce (stesso gruppo:nome).
+        parent.libraries.push(child.libraries[0].clone());
+        parent.libraries.last_mut().unwrap().name = "org.ow2.asm:asm:9.0".into();
+
+        let merged = child.inherit(parent);
+        assert_eq!(merged.id, "fabric-loader-0.20.1-26.3");
+        assert_eq!(merged.jar_id(), "26.3");
+        assert_eq!(
+            merged.main_class,
+            "net.fabricmc.loader.impl.launch.knot.KnotClient"
+        );
+        assert!(merged.inherits_from.is_none());
+        assert_eq!(merged.asset_index.as_ref().unwrap().id, "19");
+        assert_eq!(merged.java_version.as_ref().unwrap().major_version, 21);
+        // Librerie del figlio prima; la vecchia ASM del padre è sostituita.
+        let names: Vec<&str> = merged.libraries.iter().map(|l| l.name.as_str()).collect();
+        assert_eq!(names[0], "org.ow2.asm:asm:9.10.1");
+        assert_eq!(names[1], "net.fabricmc:fabric-loader:0.20.1");
+        assert!(!names.contains(&"org.ow2.asm:asm:9.0"));
+        assert!(names.contains(&"com.mojang:brigadier:1.3.10"));
+        // Argomenti JVM del figlio accodati a quelli del padre.
+        let win = ctx("windows", "x86_64");
+        let jvm: Vec<&str> = merged
+            .arguments
+            .as_ref()
+            .unwrap()
+            .jvm
+            .iter()
+            .flat_map(|a| a.values(&win))
+            .collect();
+        assert_eq!(
+            jvm.last(),
+            Some(&"-DFabricMcEmu= net.minecraft.client.main.Main ")
+        );
+        assert!(jvm.contains(&"${classpath}"));
     }
 }
