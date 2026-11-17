@@ -1,19 +1,51 @@
-//! Contenuto di un'istanza: mod (`mods/*.jar`, disattivate come
-//! `*.jar.disabled`) e mondi (`saves/*/level.dat`).
+//! Contenuto di un'istanza: mod (`mods/*.jar`), resource pack
+//! (`resourcepacks/*.zip`) e shader (`shaderpacks/*.zip`), disattivabili
+//! con il suffisso `.disabled`, più i mondi (`saves/*/level.dat`).
 
 use std::cmp::Reverse;
 use std::path::PathBuf;
 use std::time::UNIX_EPOCH;
 
 use hyper_core::{CoreError, safe_component};
+use serde::Deserialize;
 
 use crate::{Instance, InstanceError, Result};
 
-const DISABLED: &str = ".disabled";
+/// Suffisso dei file disattivati (Minecraft e Fabric li ignorano).
+pub const DISABLED: &str = ".disabled";
+
+/// Cartella di contenuti dentro il `.minecraft` dell'istanza.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ContentDir {
+    Mods,
+    ResourcePacks,
+    ShaderPacks,
+}
+
+impl ContentDir {
+    pub const ALL: [Self; 3] = [Self::Mods, Self::ResourcePacks, Self::ShaderPacks];
+
+    pub fn dir_name(self) -> &'static str {
+        match self {
+            Self::Mods => "mods",
+            Self::ResourcePacks => "resourcepacks",
+            Self::ShaderPacks => "shaderpacks",
+        }
+    }
+
+    /// Estensione dei file riconosciuti in questa cartella.
+    pub fn extension(self) -> &'static str {
+        match self {
+            Self::Mods => ".jar",
+            Self::ResourcePacks | Self::ShaderPacks => ".zip",
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ModFile {
-    /// Nome del file nella cartella mod.
+pub struct ContentFile {
+    /// Nome del file nella cartella.
     pub file: String,
     /// Nome senza estensione né `.disabled`.
     pub name: String,
@@ -29,28 +61,34 @@ pub struct World {
 }
 
 impl Instance {
+    pub fn content_dir(&self, dir: ContentDir) -> PathBuf {
+        self.game_dir().join(dir.dir_name())
+    }
+
     pub fn mods_dir(&self) -> PathBuf {
-        self.game_dir().join("mods")
+        self.content_dir(ContentDir::Mods)
     }
 
     pub fn saves_dir(&self) -> PathBuf {
         self.game_dir().join("saves")
     }
 
-    /// Mod installate, in ordine alfabetico.
-    pub fn mods(&self) -> Vec<ModFile> {
-        let Ok(entries) = std::fs::read_dir(self.mods_dir()) else {
+    /// File di contenuto installati, in ordine alfabetico.
+    pub fn content_files(&self, dir: ContentDir) -> Vec<ContentFile> {
+        let Ok(entries) = std::fs::read_dir(self.content_dir(dir)) else {
             return Vec::new();
         };
-        let mut mods: Vec<ModFile> = entries
+        let ext = dir.extension();
+        let mut files: Vec<ContentFile> = entries
             .flatten()
+            .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
             .filter_map(|e| {
                 let file = e.file_name().to_string_lossy().into_owned();
                 let (name, enabled) = match file.strip_suffix(DISABLED) {
-                    Some(base) => (base.strip_suffix(".jar")?, false),
-                    None => (file.strip_suffix(".jar")?, true),
+                    Some(base) => (base.strip_suffix(ext)?, false),
+                    None => (file.strip_suffix(ext)?, true),
                 };
-                Some(ModFile {
+                Some(ContentFile {
                     name: name.to_owned(),
                     enabled,
                     size_bytes: e.metadata().map(|m| m.len()).unwrap_or(0),
@@ -58,45 +96,47 @@ impl Instance {
                 })
             })
             .collect();
-        mods.sort_by_key(|m| m.name.to_lowercase());
-        mods
+        files.sort_by_key(|f| f.name.to_lowercase());
+        files
     }
 
-    /// Percorso di un file di mod indicato dall'esterno: solo un nome
-    /// semplice che finisce in `.jar` o `.jar.disabled`.
-    fn mod_path(&self, file: &str) -> Result<PathBuf> {
+    /// Percorso di un file di contenuto indicato dall'esterno: solo un nome
+    /// semplice con l'estensione della cartella (o la stessa + `.disabled`).
+    pub fn content_path(&self, dir: ContentDir, file: &str) -> Result<PathBuf> {
         let file = safe_component(file)?;
         let base = file.strip_suffix(DISABLED).unwrap_or(file);
-        if !base.ends_with(".jar") {
-            return Err(InstanceError::InvalidModFile(file.to_owned()));
+        if !base.ends_with(dir.extension()) {
+            return Err(InstanceError::InvalidContentFile(file.to_owned()));
         }
-        Ok(self.mods_dir().join(file))
+        Ok(self.content_dir(dir).join(file))
     }
 
-    /// Attiva o disattiva una mod rinominandola. Non sovrascrive mai: se
+    /// Attiva o disattiva un file rinominandolo. Non sovrascrive mai: se
     /// esiste già l'altra variante (es. due versioni della stessa mod) è
     /// un errore.
-    pub fn set_mod_enabled(&self, file: &str, enabled: bool) -> Result<()> {
-        let from = self.mod_path(file)?;
+    pub fn set_content_enabled(&self, dir: ContentDir, file: &str, enabled: bool) -> Result<()> {
+        let from = self.content_path(dir, file)?;
         let base = file.strip_suffix(DISABLED).unwrap_or(file);
         let target = if enabled {
             base.to_owned()
         } else {
             format!("{base}{DISABLED}")
         };
-        let to = self.mod_path(&target)?;
+        let to = self.content_path(dir, &target)?;
+        let _lock = self.try_lock()?;
         if from == to {
             return Ok(());
         }
         if to.exists() {
-            return Err(InstanceError::ModConflict(target));
+            return Err(InstanceError::ContentConflict(target));
         }
         std::fs::rename(&from, &to).map_err(|e| CoreError::io(&from, e))?;
         Ok(())
     }
 
-    pub fn delete_mod(&self, file: &str) -> Result<()> {
-        let path = self.mod_path(file)?;
+    pub fn delete_content(&self, dir: ContentDir, file: &str) -> Result<()> {
+        let path = self.content_path(dir, file)?;
+        let _lock = self.try_lock()?;
         std::fs::remove_file(&path).map_err(|e| CoreError::io(&path, e))?;
         Ok(())
     }
@@ -143,29 +183,35 @@ mod tests {
         std::fs::write(instance.mods_dir().join("lithium.jar"), b"x").unwrap();
         std::fs::write(instance.mods_dir().join("readme.txt"), b"x").unwrap();
 
-        let names: Vec<_> = instance.mods().into_iter().map(|m| m.name).collect();
+        let names: Vec<_> = instance
+            .content_files(ContentDir::Mods)
+            .into_iter()
+            .map(|m| m.name)
+            .collect();
         assert_eq!(names, ["lithium", "sodium"]);
 
-        instance.set_mod_enabled("lithium.jar", false).unwrap();
+        instance
+            .set_content_enabled(ContentDir::Mods, "lithium.jar", false)
+            .unwrap();
         assert!(instance.mods_dir().join("lithium.jar.disabled").is_file());
         assert!(
             !instance
-                .mods()
+                .content_files(ContentDir::Mods)
                 .iter()
                 .find(|m| m.name == "lithium")
                 .unwrap()
                 .enabled
         );
         instance
-            .set_mod_enabled("lithium.jar.disabled", true)
+            .set_content_enabled(ContentDir::Mods, "lithium.jar.disabled", true)
             .unwrap();
         assert!(instance.mods_dir().join("lithium.jar").is_file());
 
         // Due copie della stessa mod: disattivare non deve cancellarne una.
         std::fs::write(instance.mods_dir().join("sodium.jar.disabled"), b"old").unwrap();
         assert!(matches!(
-            instance.set_mod_enabled("sodium.jar", false),
-            Err(InstanceError::ModConflict(_))
+            instance.set_content_enabled(ContentDir::Mods, "sodium.jar", false),
+            Err(InstanceError::ContentConflict(_))
         ));
         assert_eq!(
             std::fs::read(instance.mods_dir().join("sodium.jar.disabled")).unwrap(),
@@ -173,10 +219,35 @@ mod tests {
         );
 
         for bad in ["../x.jar", "readme.txt", "a/b.jar"] {
-            assert!(instance.delete_mod(bad).is_err(), "{bad}");
+            assert!(
+                instance.delete_content(ContentDir::Mods, bad).is_err(),
+                "{bad}"
+            );
         }
-        instance.delete_mod("lithium.jar").unwrap();
+        instance
+            .delete_content(ContentDir::Mods, "lithium.jar")
+            .unwrap();
         assert!(!instance.mods_dir().join("lithium.jar").exists());
+    }
+
+    #[test]
+    fn resource_packs_use_zip_and_skip_folders() {
+        let dir = tempfile::tempdir().unwrap();
+        let instance = InstanceManager::new(Paths::new(dir.path()))
+            .create("r", "26.3", None)
+            .unwrap();
+        let packs = instance.content_dir(ContentDir::ResourcePacks);
+        std::fs::create_dir_all(packs.join("cartella.zip")).unwrap();
+        std::fs::write(packs.join("Faithful.zip"), b"x").unwrap();
+        std::fs::write(packs.join("mod.jar"), b"x").unwrap();
+        let files = instance.content_files(ContentDir::ResourcePacks);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].name, "Faithful");
+        assert!(
+            instance
+                .content_path(ContentDir::ResourcePacks, "mod.jar")
+                .is_err()
+        );
     }
 
     #[test]

@@ -5,6 +5,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+mod content;
 mod launch;
 mod state;
 mod views;
@@ -29,6 +30,7 @@ fn main() {
 
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
@@ -45,9 +47,17 @@ fn main() {
             commands::remove_account,
             commands::get_settings,
             commands::save_settings,
-            commands::list_mods,
-            commands::set_mod_enabled,
-            commands::delete_mod,
+            content::content_search,
+            content::content_project,
+            content::content_plan,
+            content::content_install,
+            content::content_installed,
+            content::set_content_enabled,
+            content::delete_content,
+            content::content_update,
+            content::pack_install,
+            content::pack_import,
+            content::pack_export,
             commands::list_worlds,
             commands::open_folder,
             commands::open_url,

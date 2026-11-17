@@ -1,20 +1,21 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { api, type Mod, type World } from '../lib/api';
+  import { api, type World } from '../lib/api';
   import { app } from '../lib/store.svelte';
-  import { initial, megabytes, playtime, relativeDay } from '../lib/format';
+  import { playtime, relativeDay } from '../lib/format';
   import Icon from '../components/Icon.svelte';
   import InstanceIcon from '../components/InstanceIcon.svelte';
   import PlayButton from '../components/PlayButton.svelte';
   import Modal from '../components/Modal.svelte';
+  import ContentList from '../components/ContentList.svelte';
 
   let { name }: { name: string } = $props();
 
-  type Tab = 'mods' | 'worlds' | 'console' | 'settings';
+  type Tab = 'mods' | 'resourcepacks' | 'shaderpacks' | 'worlds' | 'console' | 'settings';
   let tab = $state<Tab>('mods');
-  let mods = $state<Mod[]>([]);
+  let modCount = $state<number | null>(null);
   let worlds = $state<World[]>([]);
-  let modQuery = $state('');
+  let exporting = $state(false);
 
   // Impostazioni istanza (modulo).
   let customMemory = $state(false);
@@ -28,13 +29,11 @@
   const inst = $derived(app.instances.find((i) => i.name === name) ?? null);
   const launch = $derived(app.launches[name]);
   const log = $derived(app.logs[name] ?? []);
-  const shownMods = $derived(mods.filter((m) => !modQuery.trim() || m.name.toLowerCase().includes(modQuery.trim().toLowerCase())));
   const status = $derived(launch?.phase === 'running' ? 'In gioco' : launch ? 'Installazione' : 'Pronta');
 
   // Ricarica i dati della scheda quando cambia istanza o scheda.
   $effect(() => {
     const n = name;
-    if (tab === 'mods') api.listMods(n).then((m) => (mods = m)).catch((e) => app.error(e));
     if (tab === 'worlds') api.listWorlds(n).then((w) => (worlds = w)).catch((e) => app.error(e));
   });
 
@@ -52,26 +51,20 @@
     });
   });
 
-  // Se l'istanza è vanilla la scheda Mod non serve: si parte dai mondi.
+  // Se l'istanza è vanilla mod e shader non servono: si parte dai resource pack.
   $effect(() => {
-    if (inst && !inst.loader && tab === 'mods') tab = 'worlds';
+    if (inst && !inst.loader && (tab === 'mods' || tab === 'shaderpacks')) tab = 'resourcepacks';
   });
 
-  async function toggle(mod: Mod) {
+  async function exportPack() {
+    exporting = true;
     try {
-      await api.setModEnabled(name, mod.file, !mod.enabled);
-      mods = await api.listMods(name);
+      const res = await api.packExport(name);
+      if (res) app.info_(`Modpack salvato in ${res.path} (${res.linked} file da Modrinth, ${res.bundled} inclusi).`);
     } catch (e) {
       app.error(e);
-    }
-  }
-
-  async function removeMod(mod: Mod) {
-    try {
-      await api.deleteMod(name, mod.file);
-      mods = await api.listMods(name);
-    } catch (e) {
-      app.error(e);
+    } finally {
+      exporting = false;
     }
   }
 
@@ -105,7 +98,9 @@
   }
 
   const tabs = $derived<[Tab, string][]>([
-    ...(inst?.loader ? [['mods', `Mod · ${mods.length}`] as [Tab, string]] : []),
+    ...(inst?.loader ? [['mods', modCount === null ? 'Mod' : `Mod · ${modCount}`] as [Tab, string]] : []),
+    ['resourcepacks', 'Resource pack'],
+    ...(inst?.loader ? [['shaderpacks', 'Shader'] as [Tab, string]] : []),
     ['worlds', 'Mondi'],
     ['console', 'Console'],
     ['settings', 'Impostazioni istanza'],
@@ -128,6 +123,7 @@
           </div>
           <h1 class="page-title">{inst.name}</h1>
         </div>
+        <button class="btn" disabled={exporting} onclick={exportPack}><Icon name="download" size={16} /> Esporta .mrpack</button>
         <PlayButton name={inst.name} size="large" />
       </div>
       <div class="facts">
@@ -144,23 +140,11 @@
     </div>
 
     {#if tab === 'mods'}
-      <div class="tools">
-        <input class="input grow" type="search" aria-label="Cerca tra le mod installate" placeholder="Cerca tra le mod installate…" bind:value={modQuery} />
-        <button class="btn" onclick={() => api.openFolder(name, 'mods')}><Icon name="folder" size={16} /> Apri cartella mod</button>
-      </div>
-      <p class="hint muted">Per aggiungere mod copia i file <code>.jar</code> nella cartella mod. Il catalogo Modrinth arriverà nella prossima fase.</p>
-      <div class="card list">
-        {#each shownMods as m (m.file)}
-          <div class="mod-row" class:off={!m.enabled}>
-            <span class="mod-ico">{initial(m.name)}</span>
-            <span class="mod-meta"><span class="mod-name">{m.name}</span><span class="muted small">{m.file} · {megabytes(m.sizeBytes)}</span></span>
-            <button class="switch" role="switch" aria-checked={m.enabled} aria-label="{m.enabled ? 'Disattiva' : 'Attiva'} {m.name}" onclick={() => toggle(m)}></button>
-            <button class="icon-btn" aria-label="Elimina {m.name}" onclick={() => removeMod(m)}><Icon name="trash" size={18} /></button>
-          </div>
-        {:else}
-          <p class="muted pad">{mods.length ? 'Nessuna mod corrisponde alla ricerca.' : 'Nessuna mod installata.'}</p>
-        {/each}
-      </div>
+      <ContentList instance={name} kind="mod" oncount={(n) => (modCount = n)} />
+    {:else if tab === 'resourcepacks'}
+      <ContentList instance={name} kind="resourcepack" />
+    {:else if tab === 'shaderpacks'}
+      <ContentList instance={name} kind="shader" />
     {:else if tab === 'worlds'}
       <div class="tools"><button class="btn" onclick={() => api.openFolder(name, 'saves')}><Icon name="folder" size={16} /> Apri cartella mondi</button></div>
       <div class="worlds">
@@ -235,19 +219,7 @@
   .tabs button { height: 44px; padding: 0 16px; background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--muted); font-weight: 600; }
   .tabs button.on { color: var(--text); border-bottom-color: var(--accent-line); }
   .tools { display: flex; gap: 10px; flex-wrap: wrap; }
-  .grow { flex: 1 1 260px; }
-  .hint { margin: -8px 0 0; font-size: 12px; }
-  code { font-family: var(--mono); font-size: 12px; }
-  .list { overflow: hidden; }
-  .mod-row { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-bottom: 1px solid #1f232c; }
-  .mod-row:last-child { border-bottom: 0; }
-  .mod-row.off .mod-meta { opacity: .55; }
-  .mod-ico { width: 36px; height: 36px; border-radius: 8px; background: #252a33; display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--text-2); flex: 0 0 auto; }
-  .mod-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .mod-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .pad { padding: 16px; margin: 0; }
-  .icon-btn { width: 36px; height: 36px; border-radius: 8px; border: 0; background: transparent; color: var(--muted); display: flex; align-items: center; justify-content: center; }
-  .icon-btn:hover { color: #ff8a8e; background: var(--surface-2); }
   .worlds { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
   .world { padding: 16px; display: flex; flex-direction: column; gap: 4px; }
   .console { min-height: 320px; max-height: 460px; background: var(--bg-deep); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; font-family: var(--mono); font-size: 12px; line-height: 1.7; color: var(--text-2); white-space: pre-wrap; word-break: break-word; user-select: text; }

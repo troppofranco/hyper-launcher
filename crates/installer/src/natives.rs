@@ -24,6 +24,22 @@ pub fn extract_zip<R: Read + Seek>(
     dest: &Path,
     exclude: &[String],
 ) -> Result<usize> {
+    extract_zip_mapped(reader, origin, dest, |name| {
+        let skip =
+            name.starts_with("META-INF/") || exclude.iter().any(|ex| name.starts_with(ex.as_str()));
+        (!skip).then_some(name)
+    })
+}
+
+/// Come [`extract_zip`], ma `map` decide per ogni entry (nome con `/`) se
+/// estrarla e con quale percorso relativo (`None` = salta). Il percorso
+/// restituito passa comunque da [`safe_join`].
+pub fn extract_zip_mapped<R: Read + Seek>(
+    reader: R,
+    origin: &Path,
+    dest: &Path,
+    map: impl Fn(&str) -> Option<&str>,
+) -> Result<usize> {
     let zip_err = |source| InstallerError::Zip {
         path: origin.to_owned(),
         source,
@@ -35,11 +51,11 @@ pub fn extract_zip<R: Read + Seek>(
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).map_err(zip_err)?;
         let name = entry.name().map_err(zip_err)?.replace('\\', "/");
-        if name.starts_with("META-INF/") || exclude.iter().any(|ex| name.starts_with(ex.as_str())) {
+        let Some(relative) = map(&name).filter(|r| !r.is_empty()) else {
             continue;
-        }
+        };
 
-        let out = safe_join(dest, &name)?;
+        let out = safe_join(dest, relative)?;
         if entry.is_dir() {
             fs::create_dir_all(&out)?;
             continue;

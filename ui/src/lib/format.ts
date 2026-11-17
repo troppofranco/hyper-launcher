@@ -53,3 +53,16 @@ export function initial(name: string): string {
 export function loaderLabel(i: { version: string; loader: { name: string; version: string } | null }): string {
   return i.loader ? `${i.loader.name} ${i.loader.version}` : 'Vanilla';
 }
+
+const compactFormat = new Intl.NumberFormat('it-IT', { notation: 'compact', maximumFractionDigits: 1 });
+
+/** "98 Mln", "12.000" → numeri brevi per i download. */
+export function compact(n: number): string {
+  return compactFormat.format(n);
+}
+
+/** Come relativeDay, ma da una data ISO (es. quelle di Modrinth). */
+export function relativeIso(iso: string): string {
+  const t = Date.parse(iso);
+  return Number.isNaN(t) ? '' : relativeDay(Math.floor(t / 1000));
+}

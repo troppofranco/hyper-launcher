@@ -13,7 +13,7 @@ use hyper_core::{Config, CoreError, Paths, fs};
 use hyper_installer::LoaderSpec;
 use serde::{Deserialize, Serialize};
 
-pub use content::{ModFile, World};
+pub use content::{ContentDir, ContentFile, DISABLED, World};
 pub use launch::{LaunchCommand, LaunchOptions, build_command, prepare_natives};
 pub use prepare::{PreparedLaunch, RunningGame, install, prepare_launch, resolve_java};
 
@@ -43,11 +43,11 @@ pub enum InstanceError {
     #[error("Java not found: {0}")]
     JavaNotFound(PathBuf),
 
-    #[error("{0:?} is not a mod file (.jar or .jar.disabled)")]
-    InvalidModFile(String),
+    #[error("{0:?} is not a valid content file name")]
+    InvalidContentFile(String),
 
-    #[error("{0} already exists: remove one of the two copies from the mods folder")]
-    ModConflict(String),
+    #[error("{0} already exists: remove one of the two copies")]
+    ContentConflict(String),
 
     #[error("game process error ({program}): {source}")]
     Process {
@@ -235,7 +235,7 @@ impl InstanceManager {
 
     /// `base`, oppure `base (2)`, `base (3)`… se una cartella con quel nome
     /// (ignorando le maiuscole, come Windows) esiste già.
-    fn unique_name(&self, base: &str) -> Result<String> {
+    pub fn unique_name(&self, base: &str) -> Result<String> {
         let taken = |name: &str| -> Result<bool> {
             let dir = self.paths.instance_dir(name)?;
             Ok(dir.exists())

@@ -126,6 +126,11 @@ impl Paths {
         self.root.join("updates")
     }
 
+    /// File temporanei scaricati (es. modpack da importare).
+    pub fn cache_dir(&self) -> PathBuf {
+        self.root.join("cache")
+    }
+
     pub fn instances_dir(&self) -> PathBuf {
         self.root.join("instances")
     }

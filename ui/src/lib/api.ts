@@ -21,7 +21,25 @@ export interface Instance {
 export interface Account { name: string; uuid: string; kind: 'offline' | 'microsoft'; default: boolean }
 export interface VersionInfo { id: string; kind: string; releaseTime: string }
 export interface Versions { latestRelease: string; latestSnapshot: string; versions: VersionInfo[] }
-export interface Mod { file: string; name: string; enabled: boolean; sizeBytes: number }
+export type ContentKind = 'mod' | 'resourcepack' | 'shader' | 'datapack' | 'modpack';
+export type ContentDirName = 'mods' | 'resourcepacks' | 'shaderpacks';
+export type SearchSort = 'relevance' | 'downloads' | 'updated';
+export interface SearchHit { id: string; slug: string; title: string; description: string; author: string; iconUrl: string | null; downloads: number; updated: string; categories: string[] }
+export interface SearchResults { hits: SearchHit[]; total: number }
+export interface Project {
+  id: string; slug: string; title: string; description: string; projectType: ContentKind; downloads: number;
+  iconUrl: string | null; updated: string; categories: string[]; gallery: { url: string; title: string | null }[];
+  license: string | null; sourceUrl: string | null; pageUrl: string;
+}
+export interface PlannedFile { projectId: string; name: string; versionNumber: string; file: string; sizeBytes: number; folder: string; replaces: boolean }
+export interface InstallPlan { files: PlannedFile[]; totalBytes: number }
+export interface InstalledContent {
+  file: string; name: string; enabled: boolean; sizeBytes: number;
+  projectId: string | null; slug: string | null; title: string | null; iconUrl: string | null;
+  versionNumber: string | null; update: string | null;
+}
+export interface ExportResult { path: string; linked: number; bundled: number }
+export interface SearchInput { text: string; kind: ContentKind; instance: string | null; categories: string[]; sort: SearchSort; offset: number }
 export interface World { name: string; lastPlayed: number | null }
 export interface News { title: string; date: string; text: string; image: string | null; url: string }
 export interface AppInfo { version: string; build: number | null; dataDir: string }
@@ -38,6 +56,7 @@ export interface InstanceSettings { memoryMb: number | null; javaPath: string | 
 export interface ProgressEvent { instance: string; stage: 'libraries' | 'assets' | 'java'; done: number; total: number; downloadedBytes: number }
 export interface LogEvent { instance: string; line: string }
 export interface StateEvent { instance: string; state: 'installing' | 'running' | 'stopped'; error: string | null; exitCode: number | null }
+export interface ContentProgressEvent { instance: string; done: number; total: number }
 export interface DeviceCodeEvent { userCode: string; verificationUri: string; expiresIn: number }
 
 interface Events {
@@ -45,6 +64,7 @@ interface Events {
   'game-log': LogEvent;
   'instance-state': StateEvent;
   'msa-code': DeviceCodeEvent;
+  'content-progress': ContentProgressEvent;
 }
 
 export const inTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -74,9 +94,21 @@ export const api = {
   removeAccount: (name: string) => call<Account[]>('remove_account', { name }),
   getSettings: () => call<Settings>('get_settings'),
   saveSettings: (settings: Settings) => call<void>('save_settings', { settings }),
-  listMods: (name: string) => call<Mod[]>('list_mods', { name }),
-  setModEnabled: (name: string, file: string, enabled: boolean) => call<void>('set_mod_enabled', { name, file, enabled }),
-  deleteMod: (name: string, file: string) => call<void>('delete_mod', { name, file }),
+  search: (input: SearchInput) => call<SearchResults>('content_search', { input }),
+  project: (id: string) => call<Project>('content_project', { id }),
+  plan: (instance: string, project: string, kind: ContentKind, world: string | null) =>
+    call<InstallPlan>('content_plan', { instance, project, kind, world }),
+  install: (instance: string, project: string, kind: ContentKind, world: string | null) =>
+    call<number>('content_install', { instance, project, kind, world }),
+  installed: (instance: string, dir: ContentDirName, checkUpdates: boolean) =>
+    call<InstalledContent[]>('content_installed', { instance, dir, checkUpdates }),
+  setContentEnabled: (instance: string, dir: ContentDirName, file: string, enabled: boolean) =>
+    call<void>('set_content_enabled', { instance, dir, file, enabled }),
+  deleteContent: (instance: string, dir: ContentDirName, file: string) => call<void>('delete_content', { instance, dir, file }),
+  updateContent: (instance: string, dir: ContentDirName, files: string[]) => call<number>('content_update', { instance, dir, files }),
+  packInstall: (project: string) => call<Instance>('pack_install', { project }),
+  packImport: () => call<Instance | null>('pack_import'),
+  packExport: (instance: string) => call<ExportResult | null>('pack_export', { instance }),
   listWorlds: (name: string) => call<World[]>('list_worlds', { name }),
   openFolder: (name: string | null, folder: string) => call<void>('open_folder', { name, folder }),
   openUrl: (url: string) => call<void>('open_url', { url }),

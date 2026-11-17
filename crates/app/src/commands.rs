@@ -12,8 +12,7 @@ use tauri_plugin_opener::OpenerExt;
 
 use crate::state::{AppState, CmdResult, OrCmd};
 use crate::views::{
-    AccountView, AppInfo, InstanceView, ModView, NewsView, UpdateView, VersionView, VersionsView,
-    WorldView,
+    AccountView, AppInfo, InstanceView, NewsView, UpdateView, VersionView, VersionsView, WorldView,
 };
 
 // ---------- App ----------
@@ -294,30 +293,7 @@ pub fn save_settings(state: State<'_, AppState>, settings: SettingsView) -> CmdR
     state.save_config(config).cmd()
 }
 
-// ---------- Mod, mondi, cartelle ----------
-
-#[tauri::command]
-pub fn list_mods(state: State<'_, AppState>, name: String) -> CmdResult<Vec<ModView>> {
-    let instance = state.instances().load(&name).cmd()?;
-    Ok(instance.mods().into_iter().map(ModView::from).collect())
-}
-
-#[tauri::command]
-pub fn set_mod_enabled(
-    state: State<'_, AppState>,
-    name: String,
-    file: String,
-    enabled: bool,
-) -> CmdResult<()> {
-    let instance = state.instances().load(&name).cmd()?;
-    instance.set_mod_enabled(&file, enabled).cmd()
-}
-
-#[tauri::command]
-pub fn delete_mod(state: State<'_, AppState>, name: String, file: String) -> CmdResult<()> {
-    let instance = state.instances().load(&name).cmd()?;
-    instance.delete_mod(&file).cmd()
-}
+// ---------- Mondi, cartelle ----------
 
 #[tauri::command]
 pub fn list_worlds(state: State<'_, AppState>, name: String) -> CmdResult<Vec<WorldView>> {

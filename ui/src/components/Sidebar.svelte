@@ -20,6 +20,7 @@
   <div class="sep"></div>
   <button class="nav" class:active={view === 'home'} aria-label="Home" onclick={() => app.go({ view: 'home' })}><Icon name="home" size={22} /></button>
   <button class="nav" class:active={view === 'library'} aria-label="Libreria" onclick={() => app.go({ view: 'library' })}><Icon name="library" size={22} /></button>
+  <button class="nav" class:active={view === 'explore' || view === 'project'} aria-label="Esplora" title="Esplora" onclick={() => app.go({ view: 'explore' })}><Icon name="compass" size={22} /></button>
   <button class="nav" aria-label="Nuova istanza" onclick={() => (app.newInstanceOpen = true)}><Icon name="plus" size={22} /></button>
   {#if shortcuts.length}<div class="sep"></div>{/if}
   {#each shortcuts as inst (inst.name)}

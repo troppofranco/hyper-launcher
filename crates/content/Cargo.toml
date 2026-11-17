@@ -1,0 +1,27 @@
+[package]
+name = "hyper-content"
+description = "Catalogo di contenuti (Modrinth): ricerca, installazione, aggiornamenti e modpack .mrpack"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+futures.workspace = true
+hyper-core.workspace = true
+hyper-installer.workspace = true
+hyper-instances.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+zip.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+wiremock.workspace = true
+
+[lints]
+workspace = true

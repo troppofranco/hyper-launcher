@@ -3,7 +3,9 @@
   import { app } from '../lib/store.svelte';
   import Modal from './Modal.svelte';
 
-  let tab = $state<'microsoft' | 'offline'>('microsoft');
+  // Senza client ID il login Microsoft non può funzionare: si parte da Offline.
+  const msaReady = $derived(!!app.settings?.msaClientId.trim());
+  let tab = $state<'microsoft' | 'offline'>(app.settings?.msaClientId.trim() ? 'microsoft' : 'offline');
   let offlineName = $state('');
   let busy = $state(false);
   let code = $state<DeviceCodeEvent | null>(null);
@@ -63,7 +65,10 @@
         <span class="muted">Si è aperta la pagina <button class="link" onclick={() => code && api.openUrl(code.verificationUri)}>{code.verificationUri}</button>: inserisci il codice e conferma. In attesa…</span>
       </div>
     {/if}
-    <button class="btn primary" disabled={busy} onclick={loginMicrosoft}>{busy ? 'In attesa della conferma…' : 'Accedi con Microsoft'}</button>
+    {#if !msaReady}
+      <p class="notice">Il login Microsoft non è ancora disponibile in questa versione. Per ora usa un account <button class="link" onclick={() => (tab = 'offline')}>offline</button>.</p>
+    {/if}
+    <button class="btn primary" disabled={busy || !msaReady} onclick={loginMicrosoft}>{busy ? 'In attesa della conferma…' : 'Accedi con Microsoft'}</button>
   {:else}
     <form onsubmit={addOffline} class="offline">
       <label class="field">Nome giocatore
@@ -85,5 +90,6 @@
   .offline { display: flex; flex-direction: column; gap: 12px; }
   .code-box { display: flex; flex-direction: column; gap: 6px; padding: 16px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line-strong); }
   .code { font-family: var(--mono); font-size: 28px; letter-spacing: .12em; font-weight: 600; user-select: text; }
+  .notice { padding: 12px 14px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line-strong); }
   .link { background: none; border: 0; padding: 0; color: var(--accent-line); text-decoration: underline; }
 </style>

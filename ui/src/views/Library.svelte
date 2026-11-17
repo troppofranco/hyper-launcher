@@ -21,7 +21,11 @@
       <h1 class="page-title">Libreria</h1>
       <p class="muted">Le tue istanze di Minecraft, ognuna con mondi, mod e impostazioni separati.</p>
     </div>
-    <button class="btn primary" onclick={() => (app.newInstanceOpen = true)}>+ Nuova istanza</button>
+    <span class="head-actions">
+      <button class="btn" onclick={() => app.importPack()} disabled={'' in app.contentProgress}>{'' in app.contentProgress ? 'Importazione…' : 'Importa .mrpack'}</button>
+      <button class="btn" onclick={() => app.browse(null, 'modpack')}>Sfoglia modpack</button>
+      <button class="btn primary" onclick={() => (app.newInstanceOpen = true)}>+ Nuova istanza</button>
+    </span>
   </div>
 
   <div class="tools">
@@ -63,6 +67,7 @@
 </div>
 
 <style>
+  .head-actions { display: flex; gap: 10px; flex-wrap: wrap; }
   .tools { display: flex; gap: 12px; flex-wrap: wrap; }
   .search { flex: 1 1 320px; display: flex; }
   .search .input { flex: 1; height: 44px; }

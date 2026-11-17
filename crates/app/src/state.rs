@@ -3,6 +3,7 @@
 use std::collections::HashSet;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
+use hyper_content::Modrinth;
 use hyper_core::{Config, Paths};
 use hyper_installer::Installer;
 use hyper_instances::InstanceManager;
@@ -24,6 +25,8 @@ impl<T, E: std::fmt::Display> OrCmd<T> for Result<T, E> {
 
 pub struct AppState {
     pub paths: Paths,
+    /// Client del catalogo, condiviso (connessioni riusate).
+    pub modrinth: Modrinth,
     config: Mutex<Config>,
     /// Un solo client HTTP per tutta l'app (connessioni riusate); ricreato
     /// solo se cambia il numero di download in parallelo.
@@ -42,6 +45,7 @@ impl AppState {
         let config = Config::load(&paths)?;
         let installer = Installer::new(paths.clone(), config.download_concurrency)?;
         Ok(Self {
+            modrinth: Modrinth::new()?,
             paths,
             config: Mutex::new(config),
             installer: Mutex::new(installer),

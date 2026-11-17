@@ -1,11 +1,13 @@
 // Stato globale dell'interfaccia (rune di Svelte 5).
 
-import { api, on, type Account, type AppInfo, type Instance, type News, type Settings, type UpdateInfo, type Versions } from './api';
+import { api, on, type Account, type AppInfo, type ContentKind, type Instance, type News, type SearchSort, type Settings, type UpdateInfo, type Versions } from './api';
 
 export type Route =
   | { view: 'home' }
   | { view: 'library' }
   | { view: 'instance'; name: string }
+  | { view: 'explore' }
+  | { view: 'project'; id: string; kind: ContentKind }
   | { view: 'settings' };
 
 export interface LaunchState {
@@ -18,6 +20,16 @@ export interface LaunchState {
 
 /** Riga di console con id crescente, usato come chiave stabile. */
 export interface LogLine { id: number; text: string }
+
+/** Filtri della pagina Esplora: restano uguali tornando dal dettaglio. */
+export interface ExploreState {
+  text: string;
+  kind: ContentKind;
+  /** Istanza in cui installare (filtra anche per compatibilità). */
+  instance: string | null;
+  category: string | null;
+  sort: SearchSort;
+}
 
 const MAX_LOG_LINES = 2500;
 const TRIM_TO = 2000;
@@ -33,6 +45,9 @@ class AppStore {
   update = $state<UpdateInfo | null>(null);
   launches = $state<Record<string, LaunchState>>({});
   logs = $state<Record<string, LogLine[]>>({});
+  explore = $state<ExploreState>({ text: '', kind: 'mod', instance: null, category: null, sort: 'relevance' });
+  /** Download di contenuti in corso, per istanza (`''` = import di un modpack). */
+  contentProgress = $state<Record<string, { done: number; total: number }>>({});
   toast = $state<{ kind: 'error' | 'info'; text: string } | null>(null);
   newInstanceOpen = $state(false);
   addAccountOpen = $state(false);
@@ -54,6 +69,7 @@ class AppStore {
         this.launches[p.instance] = { phase: 'installing', stage: p.stage, done: p.done, total: p.total, downloadedBytes: p.downloadedBytes };
       }),
       on('game-log', (l) => this.appendLog(l.instance, l.line)),
+      on('content-progress', (p) => (this.contentProgress[p.instance] = { done: p.done, total: p.total })),
       on('instance-state', (s) => {
         if (s.state === 'stopped') {
           delete this.launches[s.instance];
@@ -115,6 +131,71 @@ class AppStore {
 
   go(route: Route) {
     this.route = route;
+  }
+
+  /** Apre Esplora già filtrata per un'istanza e un tipo di contenuto. */
+  browse(instance: string | null, kind: ContentKind) {
+    // Si modifica l'oggetto invece di sostituirlo: la pagina Esplora lo tiene in mano.
+    Object.assign(this.explore, { instance, kind, category: null });
+    this.go({ view: 'explore' });
+  }
+
+  /**
+   * Apre il dettaglio di un progetto. Il tipo va passato: Modrinth descrive
+   * i data pack come "mod". Con `instance` quella diventa la destinazione.
+   */
+  openProject(id: string, kind: ContentKind, instance?: string) {
+    if (instance) this.explore.instance = instance;
+    this.go({ view: 'project', id, kind });
+  }
+
+  /** Esegue un'operazione sui contenuti e poi toglie la sua barra di avanzamento. */
+  async withContentProgress<T>(key: string, op: () => Promise<T>): Promise<T> {
+    this.contentProgress[key] = { done: 0, total: 0 };
+    try {
+      return await op();
+    } finally {
+      delete this.contentProgress[key];
+    }
+  }
+
+  /** Installa un modpack Modrinth come nuova istanza e la apre; `false` se fallisce. */
+  async installPack(project: string): Promise<boolean> {
+    try {
+      const inst = await this.withContentProgress('', () => api.packInstall(project));
+      await this.refreshInstances();
+      this.info_(`Modpack installato: nuova istanza “${inst.name}”.`);
+      this.go({ view: 'instance', name: inst.name });
+      return true;
+    } catch (e) {
+      this.error(e);
+      return false;
+    }
+  }
+
+  /** Installa un progetto (con le dipendenze) in un'istanza; `false` se fallisce. */
+  async installContent(instance: string, project: string, title: string, kind: ContentKind, world: string | null): Promise<boolean> {
+    try {
+      const n = await this.withContentProgress(instance, () => api.install(instance, project, kind, world));
+      this.info_(`${title} installato in ${instance}${n > 1 ? `, con ${n - 1} dipendenze` : ''}.`);
+      return true;
+    } catch (e) {
+      this.error(e);
+      return false;
+    }
+  }
+
+  /** Importa un .mrpack scelto dall'utente e apre la nuova istanza. */
+  async importPack() {
+    try {
+      const inst = await this.withContentProgress('', () => api.packImport());
+      if (!inst) return;
+      await this.refreshInstances();
+      this.info_(`Modpack importato: ${inst.name}.`);
+      this.go({ view: 'instance', name: inst.name });
+    } catch (e) {
+      this.error(e);
+    }
   }
 
   async play(name: string) {

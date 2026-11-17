@@ -2,6 +2,7 @@
 //! parsing degli argomenti e presentazione: la logica di avvio sta in
 //! `hyper-instances`, condivisa con la futura UI.
 
+mod content;
 mod progress;
 mod update;
 
@@ -63,6 +64,12 @@ enum Command {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Catalogo Modrinth: cerca, installa e aggiorna contenuti.
+    #[command(subcommand, alias = "mod")]
+    Content(content::ContentCommand),
+    /// Modpack .mrpack: importa, installa da Modrinth, esporta.
+    #[command(subcommand)]
+    Pack(content::PackCommand),
     /// Aggiorna Hyper Launcher all'ultima versione pubblicata (avviene
     /// comunque da solo a ogni avvio; disattivabile con HYPER_NO_UPDATE=1).
     Update,
@@ -170,6 +177,8 @@ async fn main() -> Result<()> {
         } => versions(&app, snapshots, all, limit).await,
         Command::Account(cmd) => account(&app, cmd).await,
         Command::Instance(cmd) => instance(&app, cmd).await,
+        Command::Content(cmd) => content::content(&app, cmd).await,
+        Command::Pack(cmd) => content::pack(&app, cmd).await,
         Command::Install { instance, java } => install(&app, &instance, java).await,
         Command::Launch {
             instance,

@@ -11,6 +11,8 @@
   import Library from './views/Library.svelte';
   import InstancePage from './views/InstancePage.svelte';
   import Settings from './views/Settings.svelte';
+  import Explore from './views/Explore.svelte';
+  import ProjectPage from './views/ProjectPage.svelte';
 
   let ready = $state(false);
   let failed = $state<string | null>(null);
@@ -44,11 +46,15 @@
         <Library />
       {:else if app.route.view === 'instance'}
         {#key app.route.name}<InstancePage name={app.route.name} />{/key}
+      {:else if app.route.view === 'explore'}
+        <Explore />
+      {:else if app.route.view === 'project'}
+        {#key app.route.id}<ProjectPage id={app.route.id} kind={app.route.kind} />{/key}
       {:else}
         <Settings />
       {/if}
     </main>
-    {#if app.route.view !== 'settings'}<NewsPanel />{/if}
+    {#if app.route.view === 'home' || app.route.view === 'library' || app.route.view === 'instance'}<NewsPanel />{/if}
   </div>
 </div>
 
