@@ -66,6 +66,9 @@ pub enum InstallerError {
         source: zip::result::ZipError,
     },
 
+    #[error("{loader} installer failed: {message}")]
+    LoaderInstaller { loader: String, message: String },
+
     #[error("background task failed: {0}")]
     Join(#[from] tokio::task::JoinError),
 }

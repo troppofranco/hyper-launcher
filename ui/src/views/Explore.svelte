@@ -1,26 +1,34 @@
 <script lang="ts">
-  import { api, type SearchHit } from '../lib/api';
+  import { api, type SearchHit, type VersionInfo } from '../lib/api';
   import { app } from '../lib/store.svelte';
   import { compact, loaderLabel, relativeIso } from '../lib/format';
-  import { KINDS, MOD_CATEGORIES, dirOf, incompatibility, kindLabel } from '../lib/content';
+  import { KINDS, LOADERS, MOD_CATEGORIES, dirOf, incompatibility, kindLabel } from '../lib/content';
   import Icon from '../components/Icon.svelte';
   import ProjectIcon from '../components/ProjectIcon.svelte';
   import ProgressBar from '../components/ProgressBar.svelte';
 
-  const PAGE = 20;
   let hits = $state<SearchHit[]>([]);
   let total = $state(0);
   let loading = $state(false);
   let failed = $state<string | null>(null);
   let installing = $state<string | null>(null);
   let installed = $state<Set<string>>(new Set());
+  let releases = $state<VersionInfo[]>([]);
   let searchSeq = 0;
 
   const ex = app.explore;
-  const target = $derived(app.instances.find((i) => i.name === ex.instance) ?? null);
-  const blocked = $derived(incompatibility(ex.kind, target));
   const isPack = $derived(ex.kind === 'modpack');
+  // Con un'istanza scelta versione e loader sono i suoi; i filtri del
+  // pannello valgono solo senza istanza (o per i modpack).
+  const target = $derived(isPack ? null : (app.instances.find((i) => i.name === ex.instance) ?? null));
+  const blocked = $derived(incompatibility(ex.kind, target));
+  const targetKey = $derived(target ? `${target.name}|${target.version}|${target.loader?.kind ?? ''}` : '');
+  const loaderFilter = $derived(ex.kind === 'mod' || ex.kind === 'modpack');
   const progress = $derived(installing ? app.contentProgress[isPack ? '' : (ex.instance ?? '')] : undefined);
+
+  $effect(() => {
+    app.loadVersions().then((v) => (releases = v.versions.filter((x) => x.kind === 'release'))).catch(() => {});
+  });
 
   async function load(offset: number) {
     const seq = ++searchSeq;
@@ -30,7 +38,9 @@
       const res = await api.search({
         text: ex.text.trim(),
         kind: ex.kind,
-        instance: isPack ? null : ex.instance,
+        instance: target?.name ?? null,
+        gameVersion: target ? null : ex.gameVersion,
+        loaders: target || !loaderFilter ? [] : ex.loaders,
         categories: ex.kind === 'mod' && ex.category ? [ex.category] : [],
         sort: ex.sort,
         offset,
@@ -47,7 +57,9 @@
 
   // Nuova ricerca quando cambiano i filtri; il testo aspetta che si smetta di scrivere.
   $effect(() => {
-    void [ex.text, ex.kind, ex.instance, ex.category, ex.sort];
+    // Dell'istanza contano solo nome, versione e loader: l'oggetto cambia a
+    // ogni aggiornamento dell'elenco istanze e ripartirebbe la ricerca.
+    void [ex.text.trim(), ex.kind, targetKey, ex.category, ex.sort, ex.gameVersion, ex.loaders.join()];
     const timer = setTimeout(() => load(0), 300);
     return () => clearTimeout(timer);
   });
@@ -55,7 +67,7 @@
   // Progetti già presenti nell'istanza scelta, per mostrare "Installato".
   $effect(() => {
     const dir = dirOf(ex.kind);
-    const inst = ex.instance;
+    const inst = targetKey ? ex.instance : null;
     installed = new Set();
     if (!inst || !dir) return;
     api.installed(inst, dir, false)
@@ -74,135 +86,222 @@
     ex.kind = kind;
     ex.category = null;
   }
+
+  function toggleLoader(id: string) {
+    ex.loaders = ex.loaders.includes(id) ? ex.loaders.filter((l) => l !== id) : [...ex.loaders, id];
+  }
+
+  /** Colore di riserva per la copertina (dal colore dell'icona). */
+  function cover(hit: SearchHit): string {
+    const hex = `#${(hit.color ?? 0x2a2f3a).toString(16).padStart(6, '0')}`;
+    return `linear-gradient(135deg, color-mix(in srgb, ${hex} 55%, #12151b), #12151b)`;
+  }
 </script>
 
-<div class="page">
-  <div class="page-head">
-    <div>
-      <h1 class="page-title">Esplora</h1>
-      <p class="muted">Mod, resource pack, shader, data pack e modpack da Modrinth.</p>
+<div class="explore">
+  <div class="main">
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">Esplora</h1>
+        <p class="muted">Modpack, mod e risorse da Modrinth, installati con le loro dipendenze.</p>
+      </div>
+      <button class="btn" onclick={() => app.importPack()} disabled={'' in app.contentProgress}><Icon name="upload" size={16} /> Importa .mrpack</button>
     </div>
-    <button class="btn" onclick={() => app.importPack()} disabled={'' in app.contentProgress}><Icon name="upload" size={16} /> Importa .mrpack</button>
-  </div>
 
-  {#if !isPack}
-    <div class="context">
-      <label for="explore-target" class="muted">Installa in</label>
-      <select id="explore-target" class="input" bind:value={ex.instance}>
-        <option value={null}>Nessuna istanza (mostra tutto)</option>
-        {#each app.recent as inst (inst.name)}
-          <option value={inst.name}>{inst.name} · {inst.loader ? inst.loader.name : 'Vanilla'} {inst.version}</option>
-        {/each}
-      </select>
-      {#if target}
-        <span class="pill">{target.version}</span>
-        <span class="pill">{loaderLabel(target)}</span>
-      {:else}
-        <span class="muted small">Scegli un’istanza per vedere solo i contenuti compatibili e installarli con un clic.</span>
-      {/if}
-    </div>
-  {:else}
-    <p class="note">Un modpack diventa una nuova istanza con la sua versione di Minecraft, Fabric e tutte le mod.</p>
-  {/if}
+    {#if !isPack}
+      <div class="context">
+        <label for="explore-target" class="muted">Installa in</label>
+        <select id="explore-target" class="input" bind:value={ex.instance}>
+          <option value={null}>Nessuna istanza (mostra tutto)</option>
+          {#each app.recent as inst (inst.name)}
+            <option value={inst.name}>{inst.name} · {loaderLabel(inst)} {inst.version}</option>
+          {/each}
+        </select>
+        {#if target}
+          <span class="pill">{target.version}</span>
+          <span class="pill">{loaderLabel(target)}</span>
+          <span class="muted small">Vedi solo ciò che funziona in questa istanza.</span>
+        {:else}
+          <span class="muted small">Scegli un’istanza per vedere solo i contenuti compatibili e installarli con un clic.</span>
+        {/if}
+      </div>
+    {/if}
 
-  <div class="searchrow">
     <label class="search">
       <Icon name="search" size={18} />
       <span class="visually-hidden">Cerca su Modrinth</span>
       <input id="explore-search" type="search" placeholder="Cerca {kindLabel(ex.kind).toLowerCase()}…" bind:value={ex.text} />
     </label>
-    <label class="sort"><span class="muted">Ordina</span>
-      <select id="explore-sort" class="input" bind:value={ex.sort}>
-        <option value="relevance">Rilevanza</option>
-        <option value="downloads">Download</option>
-        <option value="updated">Aggiornati di recente</option>
-      </select>
-    </label>
-  </div>
 
-  <div class="chips" role="tablist" aria-label="Tipo di contenuto">
-    {#each KINDS as k (k.kind)}
-      <button role="tab" class="chip" class:on={ex.kind === k.kind} aria-selected={ex.kind === k.kind} onclick={() => pickKind(k.kind)}>{k.label}</button>
-    {/each}
-  </div>
+    <div class="bar-row">
+      <h2 class="count">{kindLabel(ex.kind)} <span class="muted small">{loading && !hits.length ? 'ricerca…' : `${compact(total)} risultati`}</span></h2>
+      <div class="tools">
+        <label><span class="visually-hidden">Ordina</span>
+          <select id="explore-sort" class="input sort" bind:value={ex.sort}>
+            <option value="relevance">Rilevanza</option>
+            <option value="downloads">Download</option>
+            <option value="updated">Aggiornati di recente</option>
+          </select>
+        </label>
+        <div class="seg" role="group" aria-label="Vista">
+          <button class:on={ex.layout === 'grid'} aria-pressed={ex.layout === 'grid'} aria-label="Griglia" onclick={() => (ex.layout = 'grid')}><Icon name="library" size={16} /></button>
+          <button class:on={ex.layout === 'list'} aria-pressed={ex.layout === 'list'} aria-label="Elenco" onclick={() => (ex.layout = 'list')}><Icon name="list" size={16} /></button>
+        </div>
+      </div>
+    </div>
 
-  {#if ex.kind === 'mod'}
-    <div class="chips cats" aria-label="Categoria">
-      <button class="chip small-chip" class:on={!ex.category} onclick={() => (ex.category = null)}>Tutte</button>
-      {#each MOD_CATEGORIES as [id, label] (id)}
-        <button class="chip small-chip" class:on={ex.category === id} onclick={() => (ex.category = ex.category === id ? null : id)}>{label}</button>
+    {#if blocked}<p class="note warn">{blocked}</p>{/if}
+    {#if failed}<p class="error-box" role="alert">Modrinth non risponde: {failed}</p>{/if}
+
+    <div class="results" class:grid={ex.layout === 'grid'}>
+      {#each hits as hit (hit.id)}
+        <article class="card res">
+          {#if ex.layout === 'grid'}
+            <button class="cover" style:background={cover(hit)} aria-label="Apri {hit.title}" onclick={() => app.openProject(hit.id, ex.kind)}>
+              {#if hit.image}<img src={hit.image} alt="" loading="lazy" />{/if}
+              <span class="cover-icon"><ProjectIcon url={hit.iconUrl} name={hit.title} size={52} /></span>
+            </button>
+          {/if}
+          <div class="body">
+            <button class="open" onclick={() => app.openProject(hit.id, ex.kind)}>
+              {#if ex.layout === 'list'}<ProjectIcon url={hit.iconUrl} name={hit.title} size={56} />{/if}
+              <span class="meta">
+                <span class="title-row"><span class="title">{hit.title}</span><span class="dl">↓ {compact(hit.downloads)}</span></span>
+                <span class="desc">{hit.description}</span>
+              </span>
+            </button>
+            <div class="foot">
+              <span class="by">di {hit.author} · {relativeIso(hit.updated).toLowerCase()}</span>
+              <span class="action">
+                {#if installing === hit.id}
+                  <ProgressBar {progress} label={false} />
+                {:else if installed.has(hit.id)}
+                  <span class="done"><Icon name="check" size={16} /> Installato</span>
+                {:else if isPack}
+                  <button class="btn primary small" disabled={!!installing} onclick={() => install(hit)}><Icon name="download" size={15} /> Installa</button>
+                {:else if ex.kind === 'datapack' || !target}
+                  <button class="btn small" onclick={() => app.openProject(hit.id, ex.kind)}>Dettagli</button>
+                {:else}
+                  <button class="btn primary small" disabled={!!installing || !!blocked} onclick={() => install(hit)}><Icon name="download" size={15} /> Installa</button>
+                {/if}
+              </span>
+            </div>
+          </div>
+        </article>
+      {:else}
+        {#if !loading && !failed}<p class="muted">Nessun risultato{ex.text.trim() ? ` per “${ex.text.trim()}”` : ''}.</p>{/if}
       {/each}
     </div>
-  {/if}
 
-  {#if blocked}<p class="note warn">{blocked}</p>{/if}
-  {#if failed}<p class="error-box" role="alert">Modrinth non risponde: {failed}</p>{/if}
-
-  <div class="results">
-    {#each hits as hit (hit.id)}
-      <div class="card res">
-        <button class="open" onclick={() => app.openProject(hit.id, ex.kind)}>
-          <ProjectIcon url={hit.iconUrl} name={hit.title} size={56} />
-          <span class="meta">
-            <span class="title">{hit.title} <span class="by">di {hit.author}</span></span>
-            <span class="desc">{hit.description}</span>
-            <span class="facts"><span>↓ {compact(hit.downloads)}</span><span>aggiornato {relativeIso(hit.updated).toLowerCase()}</span></span>
-          </span>
-        </button>
-        <span class="action">
-          {#if installing === hit.id}
-            <span class="progress"><ProgressBar {progress} /></span>
-          {:else if installed.has(hit.id)}
-            <span class="done"><Icon name="check" size={16} /> Installato</span>
-          {:else if isPack}
-            <button class="btn primary small" disabled={!!installing} onclick={() => install(hit)}>Installa</button>
-          {:else if ex.kind === 'datapack' || !ex.instance}
-            <button class="btn small" onclick={() => app.openProject(hit.id, ex.kind)}>Dettagli</button>
-          {:else}
-            <button class="btn primary small" disabled={!!installing || !!blocked} onclick={() => install(hit)}>Installa</button>
-          {/if}
-        </span>
-      </div>
-    {:else}
-      {#if !loading && !failed}<p class="muted">Nessun risultato{ex.text.trim() ? ` per “${ex.text.trim()}”` : ''}.</p>{/if}
-    {/each}
+    {#if loading && hits.length}
+      <p class="muted center">Ricerca su Modrinth…</p>
+    {:else if hits.length < total}
+      <button class="btn more" onclick={() => load(hits.length)}>Mostra altri</button>
+    {/if}
   </div>
 
-  {#if loading}
-    <p class="muted">Ricerca su Modrinth…</p>
-  {:else if hits.length < total}
-    <button class="btn more" onclick={() => load(hits.length)}>Mostra altri ({total - hits.length})</button>
-  {/if}
+  <aside class="filters" aria-label="Filtri">
+    <h2 class="filters-title"><Icon name="filter" size={16} /> Filtri</h2>
+
+    <section>
+      <h3 class="label">Tipo di contenuto</h3>
+      <div class="chips">
+        {#each KINDS as k (k.kind)}
+          <button class="chip" class:on={ex.kind === k.kind} aria-pressed={ex.kind === k.kind} onclick={() => pickKind(k.kind)}>{k.label}</button>
+        {/each}
+      </div>
+    </section>
+
+    <section>
+      <h3 class="label">Versione di gioco</h3>
+      {#if target}
+        <p class="small muted">{target.version} · dall’istanza “{target.name}”</p>
+      {:else}
+        <select id="explore-version" class="input" bind:value={ex.gameVersion}>
+          <option value={null}>Qualsiasi versione</option>
+          {#each releases as v (v.id)}<option value={v.id}>{v.id}</option>{/each}
+        </select>
+      {/if}
+    </section>
+
+    {#if loaderFilter}
+      <section>
+        <h3 class="label">Mod loader</h3>
+        {#if target}
+          <p class="small muted">{loaderLabel(target)} · dall’istanza</p>
+        {:else}
+          <div class="chips">
+            {#each LOADERS as [id, label] (id)}
+              <button class="chip" class:on={ex.loaders.includes(id)} aria-pressed={ex.loaders.includes(id)} onclick={() => toggleLoader(id)}>{label}</button>
+            {/each}
+          </div>
+        {/if}
+      </section>
+    {/if}
+
+    {#if ex.kind === 'mod'}
+      <section>
+        <h3 class="label">Categorie</h3>
+        <div class="chips">
+          {#each MOD_CATEGORIES as [id, label] (id)}
+            <button class="chip" class:on={ex.category === id} aria-pressed={ex.category === id} onclick={() => (ex.category = ex.category === id ? null : id)}>{label}</button>
+          {/each}
+        </div>
+      </section>
+    {/if}
+  </aside>
 </div>
 
 <style>
+  .explore { display: flex; align-items: flex-start; min-height: 100%; }
+  .main { flex: 1; min-width: 0; padding: 28px 32px 40px; display: flex; flex-direction: column; gap: 18px; }
   .context { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 14px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
   .context select { height: 36px; min-width: 240px; }
   .pill { font-family: var(--mono); font-size: 11px; padding: 3px 8px; border-radius: 6px; background: var(--surface-2); color: var(--text-2); }
-  .note { margin: 0; padding: 12px 14px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); color: var(--text-2); }
-  .note.warn { background: color-mix(in srgb, #e5a13a 14%, transparent); border-color: transparent; color: #f3c98a; }
-  .searchrow { display: flex; gap: 10px; flex-wrap: wrap; }
-  .search { flex: 1 1 320px; display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--panel); color: var(--muted); }
+  .note { margin: 0; padding: 12px 14px; border-radius: 12px; }
+  .note.warn { background: color-mix(in srgb, #e5a13a 14%, transparent); color: #f3c98a; }
+  .search { display: flex; align-items: center; gap: 10px; height: 50px; padding: 0 16px; border-radius: 12px; border: 1px solid var(--line-strong); background: var(--panel); color: var(--muted); }
   .search:focus-within { border-color: var(--accent-line); }
-  .search input { flex: 1; min-width: 0; height: 100%; border: 0; background: transparent; outline: none; }
-  .sort { display: flex; align-items: center; gap: 8px; }
-  .sort .input { height: 46px; }
+  .search input { flex: 1; min-width: 0; height: 100%; border: 0; background: transparent; outline: none; font-size: 15px; }
+  .bar-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .count { font-size: 16px; font-weight: 600; }
+  .tools { display: flex; gap: 8px; align-items: center; }
+  .sort { height: 38px; }
+  .seg { display: flex; border: 1px solid var(--line-strong); border-radius: 10px; overflow: hidden; }
+  .seg button { width: 40px; height: 36px; border: 0; background: transparent; color: var(--muted); display: flex; align-items: center; justify-content: center; }
+  .seg button.on { background: var(--accent-soft); color: var(--text); }
+  .results { display: flex; flex-direction: column; gap: 10px; }
+  .results.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; }
+  .res { display: flex; flex-direction: column; overflow: hidden; }
+  .res:hover { border-color: var(--line-strong); }
+  .cover { position: relative; height: 128px; border: 0; padding: 0; display: block; width: 100%; }
+  .cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .cover-icon { position: absolute; left: 14px; bottom: -22px; border-radius: 14px; padding: 3px; background: var(--surface); display: flex; }
+  .body { padding: 14px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
+  .grid .body { padding-top: 30px; }
+  .open { display: flex; align-items: center; gap: 14px; background: none; border: 0; padding: 0; text-align: left; min-width: 0; }
+  .meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .title-row { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+  .title { font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dl { flex: none; font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .desc { color: var(--muted); font-size: 13px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .foot { margin-top: auto; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .by { font-size: 12px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .action { flex: none; display: flex; justify-content: flex-end; min-width: 110px; }
+  .done { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: #7ee0ad; }
+  .more { align-self: center; }
+  .center { text-align: center; }
+  .filters { flex: 0 0 280px; align-self: stretch; border-left: 1px solid var(--line); background: var(--panel); padding: 22px 18px; display: flex; flex-direction: column; gap: 22px; }
+  .filters-title { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; }
+  .filters section { display: flex; flex-direction: column; gap: 10px; }
+  .filters h3, .filters p { margin: 0; }
+  .filters select { height: 40px; width: 100%; }
   .chips { display: flex; gap: 8px; flex-wrap: wrap; }
-  .chip { height: 34px; padding: 0 14px; border-radius: 17px; border: 1px solid var(--line-strong); background: transparent; color: var(--text-2); font-weight: 500; }
+  .chip { height: 34px; padding: 0 13px; border-radius: 17px; border: 1px solid var(--line-strong); background: transparent; color: var(--text-2); font-weight: 500; font-size: 13px; }
   .chip:hover { background: var(--surface-2); }
   .chip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
-  .small-chip { height: 30px; padding: 0 12px; font-size: 12px; }
-  .results { display: flex; flex-direction: column; gap: 10px; }
-  .res { display: flex; align-items: center; gap: 14px; padding: 14px; }
-  .res:hover { border-color: var(--line-strong); }
-  .open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; background: none; border: 0; padding: 0; text-align: left; }
-  .meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-  .title { font-weight: 600; font-size: 15px; }
-  .by { font-weight: 400; font-size: 12px; color: var(--faint); }
-  .desc { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .facts { display: flex; gap: 14px; font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
-  .action { flex: none; display: flex; justify-content: flex-end; min-width: 120px; }
-  .done { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: #7ee0ad; }
-  .progress { width: 140px; }
-  .more { align-self: center; }
+  @media (max-width: 1100px) {
+    .explore { flex-direction: column-reverse; }
+    .filters { align-self: auto; border-left: 0; border-bottom: 1px solid var(--line); }
+  }
 </style>

@@ -95,16 +95,24 @@ fn requirements(index: &PackIndex) -> Result<(String, Option<LoaderSpec>)> {
     for (key, version) in &index.dependencies {
         match key.as_str() {
             "minecraft" => game = Some(version.clone()),
-            "fabric-loader" => {
+            other => {
+                let kind = LoaderKind::from_pack_dependency(other)
+                    .ok_or_else(|| ContentError::UnsupportedLoader(other.to_owned()))?;
                 loader = Some(LoaderSpec {
-                    kind: LoaderKind::Fabric,
+                    kind,
                     version: version.clone(),
                 });
             }
-            other => return Err(ContentError::UnsupportedLoader(other.to_owned())),
         }
     }
     let game = game.ok_or_else(|| ContentError::InvalidPack("no Minecraft version".into()))?;
+    // Stessa regola della creazione di istanze (es. niente Forge 1.16).
+    if let Some(l) = loader.as_ref().filter(|l| !l.kind.supports_game(&game)) {
+        return Err(ContentError::UnsupportedLoader(format!(
+            "{} {game}",
+            l.kind.display_name()
+        )));
+    }
     Ok((game, loader))
 }
 
@@ -308,8 +316,10 @@ pub async fn export(api: &Modrinth, instance: &Instance, out: &Path) -> Result<E
     let mut dependencies =
         BTreeMap::from([("minecraft".to_owned(), instance.config.version.clone())]);
     if let Some(loader) = &instance.config.loader {
-        let LoaderKind::Fabric = loader.kind;
-        dependencies.insert("fabric-loader".to_owned(), loader.version.clone());
+        dependencies.insert(
+            loader.kind.pack_dependency().to_owned(),
+            loader.version.clone(),
+        );
     }
     let index = PackIndex {
         format_version: 1,
@@ -444,9 +454,18 @@ mod tests {
             serde_json::json!({"minecraft": "1.20.1", "forge": "47.2.0"}),
         ))
         .unwrap();
+        assert_eq!(
+            requirements(&forge).unwrap().1.unwrap().kind,
+            LoaderKind::Forge
+        );
+        let liteloader: PackIndex = serde_json::from_str(&index_json(
+            serde_json::json!([]),
+            serde_json::json!({"minecraft": "1.12.2", "liteloader": "1.0"}),
+        ))
+        .unwrap();
         assert!(matches!(
-            requirements(&forge),
-            Err(ContentError::UnsupportedLoader(l)) if l == "forge"
+            requirements(&liteloader),
+            Err(ContentError::UnsupportedLoader(l)) if l == "liteloader"
         ));
     }
 

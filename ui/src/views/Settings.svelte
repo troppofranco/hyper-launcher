@@ -3,14 +3,21 @@
   import { app } from '../lib/store.svelte';
   import Icon from '../components/Icon.svelte';
 
-  type Section = 'general' | 'look' | 'java' | 'accounts' | 'storage' | 'about';
+  type Section = 'general' | 'sync' | 'look' | 'java' | 'accounts' | 'storage' | 'about';
   const sections: [Section, string][] = [
     ['general', 'Generale'],
+    ['sync', 'Sincronizzazione'],
     ['look', 'Aspetto'],
     ['java', 'Java e memoria'],
     ['accounts', 'Account Microsoft'],
     ['storage', 'Archiviazione'],
     ['about', 'Informazioni'],
+  ];
+  const SYNC_GROUPS: ['keybinds' | 'video' | 'audio' | 'controls', string, string][] = [
+    ['keybinds', 'Tasti', 'Tutti i comandi assegnati, comprese le mod che usano i tasti di Minecraft.'],
+    ['video', 'Video', 'Distanza di rendering, FOV, luminosità, scala dell’interfaccia, FPS, nuvole e particelle.'],
+    ['audio', 'Audio', 'Volumi per categoria, audio direzionale e sottotitoli.'],
+    ['controls', 'Controlli', 'Sensibilità del mouse, assi invertiti, salto automatico, accovacciarsi e scattare con un tasto.'],
   ];
   const ACCENTS: [string, string][] = [
     ['#6e5ae6', 'Viola'],
@@ -26,7 +33,7 @@
   let checking = $state(false);
 
   $effect(() => {
-    if (app.settings && !draft) draft = { ...app.settings };
+    if (app.settings && !draft) draft = $state.snapshot(app.settings);
   });
 
   const memoryGb = $derived(draft ? Math.round(draft.defaultMemoryMb / 1024) : 4);
@@ -37,7 +44,7 @@
     saving = true;
     try {
       await api.saveSettings(draft);
-      app.applySettings({ ...draft });
+      app.applySettings($state.snapshot(draft));
       app.info_('Impostazioni salvate.');
     } catch (e) {
       app.error(e);
@@ -77,6 +84,21 @@
           <div><div class="strong">Riduci a icona quando il gioco parte</div><div class="muted small">Il launcher torna visibile quando chiudi Minecraft.</div></div>
           <button class="switch" role="switch" aria-checked={draft.minimizeOnLaunch} aria-label="Riduci a icona quando il gioco parte" onclick={() => draft && (draft.minimizeOnLaunch = !draft.minimizeOnLaunch)}></button>
         </div>
+      {:else if section === 'sync'}
+        <h2>Sincronizzazione</h2>
+        <p class="muted">Cambi un tasto o la distanza di rendering in un’istanza e lo ritrovi in tutte le altre. Le impostazioni scelte qui vengono copiate in ogni istanza prima di avviarla e salvate quando chiudi il gioco. Lingua, server recenti e resource pack restano di ogni istanza.</p>
+        <div class="row">
+          <div><div class="strong">Condividi le impostazioni tra le istanze</div><div class="muted small">Si può escludere una singola istanza dalle sue impostazioni.</div></div>
+          <button class="switch" role="switch" aria-checked={draft.sync.enabled} aria-label="Condividi le impostazioni tra le istanze" onclick={() => draft && (draft.sync.enabled = !draft.sync.enabled)}></button>
+        </div>
+        <div class="groups" class:off={!draft.sync.enabled}>
+          {#each SYNC_GROUPS as [key, label, hint] (key)}
+            <label class="group">
+              <input type="checkbox" bind:checked={draft.sync[key]} disabled={!draft.sync.enabled} />
+              <span><span class="strong">{label}</span><span class="muted small">{hint}</span></span>
+            </label>
+          {/each}
+        </div>
       {:else if section === 'look'}
         <h2>Aspetto</h2>
         <span class="strong">Colore accento</span>
@@ -113,7 +135,7 @@
 
       {#if section !== 'storage' && section !== 'about'}
         <div class="save">
-          <button class="btn" disabled={!dirty || saving} onclick={() => (draft = app.settings ? { ...app.settings } : draft)}>Annulla</button>
+          <button class="btn" disabled={!dirty || saving} onclick={() => (draft = app.settings ? $state.snapshot(app.settings) : draft)}>Annulla</button>
           <button class="btn primary" disabled={!dirty || saving} onclick={save}>{saving ? 'Salvataggio…' : 'Salva'}</button>
         </div>
       {/if}
@@ -141,5 +163,10 @@
   .box { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px; border-radius: 10px; background: var(--panel); flex-wrap: wrap; }
   .path { user-select: text; word-break: break-all; }
   .self-start { align-self: flex-start; }
+  .groups { display: flex; flex-direction: column; gap: 4px; }
+  .groups.off { opacity: .5; }
+  .group { display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px; border-radius: 10px; background: var(--panel); }
+  .group input { margin-top: 3px; accent-color: var(--accent); width: 16px; height: 16px; }
+  .group > span { display: flex; flex-direction: column; gap: 2px; }
   .save { display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid var(--line); padding-top: 16px; }
 </style>

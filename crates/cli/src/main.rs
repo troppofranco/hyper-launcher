@@ -262,12 +262,18 @@ async fn account(app: &App, cmd: AccountCommand) -> Result<()> {
 #[derive(Clone, Copy, clap::ValueEnum)]
 enum LoaderArg {
     Fabric,
+    Quilt,
+    Neoforge,
+    Forge,
 }
 
 impl From<LoaderArg> for LoaderKind {
     fn from(arg: LoaderArg) -> Self {
         match arg {
             LoaderArg::Fabric => LoaderKind::Fabric,
+            LoaderArg::Quilt => LoaderKind::Quilt,
+            LoaderArg::Neoforge => LoaderKind::NeoForge,
+            LoaderArg::Forge => LoaderKind::Forge,
         }
     }
 }

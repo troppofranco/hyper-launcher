@@ -126,6 +126,11 @@ impl Paths {
         self.root.join("updates")
     }
 
+    /// `options.txt` condiviso tra le istanze (vedi `hyper-sync`).
+    pub fn shared_options_file(&self) -> PathBuf {
+        self.root.join("sync").join("options.txt")
+    }
+
     /// File temporanei scaricati (es. modpack da importare).
     pub fn cache_dir(&self) -> PathBuf {
         self.root.join("cache")

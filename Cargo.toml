@@ -14,6 +14,7 @@ hyper-auth = { path = "crates/auth" }
 hyper-installer = { path = "crates/installer" }
 hyper-instances = { path = "crates/instances" }
 hyper-content = { path = "crates/content" }
+hyper-sync = { path = "crates/sync" }
 
 anyhow = "1"
 clap = { version = "4.6", features = ["derive"] }

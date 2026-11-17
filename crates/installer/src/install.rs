@@ -65,10 +65,7 @@ pub struct InstalledVersion {
 impl InstalledVersion {
     /// Componente del runtime Java Mojang richiesto da questa versione.
     pub fn java_component(&self) -> &str {
-        self.version
-            .java_version
-            .as_ref()
-            .map_or(java::LEGACY_COMPONENT, |j| j.component.as_str())
+        self.version.java_component()
     }
 }
 
@@ -148,7 +145,7 @@ impl Installer {
         progress: Option<StageProgressFn<'_>>,
     ) -> Result<InstalledVersion> {
         let vanilla = self.vanilla_version(entry).await?;
-        let profile = self.loader_profile(loader, &entry.id).await?;
+        let profile = self.loader_profile(loader, &entry.id, &vanilla).await?;
         self.install_resolved(profile.inherit(vanilla), progress)
             .await
     }
@@ -216,7 +213,7 @@ impl Installer {
 
         let mut tasks = Vec::new();
         let (mut classpath, natives) = self.library_tasks(&version, &mut tasks).await?;
-        let client_jar = self.paths.version_jar(version.jar_id())?;
+        let client_jar = self.paths.version_jar(version.client_jar_id())?;
         tasks.push(client.task(client_jar.clone()));
         classpath.push(client_jar);
 
@@ -419,7 +416,7 @@ pub(crate) fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T
 }
 
 /// Primo campo di un file `.sha1` di Maven (`<hash>` o `<hash>  <nome>`).
-fn parse_sha1_sidecar(bytes: &[u8]) -> Result<Sha1Hex> {
+pub(crate) fn parse_sha1_sidecar(bytes: &[u8]) -> Result<Sha1Hex> {
     String::from_utf8_lossy(bytes)
         .split_whitespace()
         .next()

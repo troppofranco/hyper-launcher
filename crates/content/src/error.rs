@@ -39,11 +39,11 @@ pub enum ContentError {
     #[error("{project} has no version compatible with Minecraft {game}")]
     NoCompatibleVersion { project: String, game: String },
 
-    #[error("mods need an instance with Fabric")]
+    #[error("mods need an instance with a mod loader (Fabric, Quilt, NeoForge or Forge)")]
     NeedsLoader,
 
-    #[error("shaders need an instance with Fabric (they run through Iris)")]
-    ShadersNeedFabric,
+    #[error("shaders need an instance with Fabric, Quilt or NeoForge (they run through Iris)")]
+    ShadersNeedIris,
 
     #[error("choose the world to install the data pack into")]
     WorldRequired,

@@ -19,6 +19,8 @@
     download: 'M12 4v11M7 10l5 5 5-5M5 20h14',
     upload: 'M12 20V9M7 14l5-5 5 5M5 4h14',
     search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4',
+    list: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
+    filter: 'M3 5h18l-7 8v6l-4 2v-8z',
     external: 'M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5',
   } as const;
 

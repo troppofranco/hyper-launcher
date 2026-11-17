@@ -22,6 +22,7 @@
   let memoryGb = $state(4);
   let javaPath = $state('');
   let jvmArgs = $state('');
+  let syncSettings = $state(true);
   let saving = $state(false);
   let deleteOpen = $state(false);
   let deleteConfirm = $state('');
@@ -48,6 +49,7 @@
       memoryGb = Math.round((inst.memoryMb ?? app.settings?.defaultMemoryMb ?? 4096) / 1024);
       javaPath = inst.javaPath ?? '';
       jvmArgs = inst.jvmArgs.join(' ');
+      syncSettings = inst.syncSettings;
     });
   });
 
@@ -76,6 +78,7 @@
         memoryMb: customMemory ? memoryGb * 1024 : null,
         javaPath: javaPath.trim() || null,
         jvmArgs,
+        syncSettings,
       });
       await app.refreshInstances();
       app.info_('Impostazioni dell’istanza salvate.');
@@ -171,6 +174,10 @@
             <input type="range" min="1" max="32" step="1" bind:value={memoryGb} />
           </label>
         {/if}
+        <div class="setting">
+          <div><div class="mod-name">Usa le impostazioni condivise</div><div class="muted small">{app.settings?.sync.enabled ? 'Tasti e impostazioni grafiche sincronizzati con le altre istanze.' : 'La sincronizzazione è spenta: si attiva in Impostazioni → Sincronizzazione.'}</div></div>
+          <button type="button" class="switch" role="switch" aria-checked={syncSettings} aria-label="Usa le impostazioni condivise" onclick={() => (syncSettings = !syncSettings)}></button>
+        </div>
         <label class="field">Java (facoltativo)
           <input class="input" bind:value={javaPath} placeholder="Vuoto = automatico (runtime ufficiale Mojang)" />
         </label>

@@ -58,16 +58,21 @@ impl ContentKind {
     /// Loader Modrinth delle versioni installabili in un'istanza con
     /// `loader` (vuoto = nessun filtro).
     pub fn loaders(self, loader: Option<LoaderKind>) -> Result<&'static [&'static str]> {
+        use LoaderKind::{Fabric, Forge, NeoForge, Quilt};
         match (self, loader) {
-            (Self::Mod | Self::Modpack, Some(LoaderKind::Fabric)) => Ok(&["fabric"]),
+            (Self::Mod, Some(Fabric)) => Ok(&["fabric"]),
+            // Quilt carica anche le mod Fabric.
+            (Self::Mod, Some(Quilt)) => Ok(&["quilt", "fabric"]),
+            (Self::Mod, Some(NeoForge)) => Ok(&["neoforge"]),
+            (Self::Mod, Some(Forge)) => Ok(&["forge"]),
             (Self::Mod, None) => Err(ContentError::NeedsLoader),
-            // Solo Fabric è supportato: i modpack per altri loader non si
-            // possono ancora installare.
-            (Self::Modpack, None) => Ok(&["fabric"]),
-            // Gli shader si caricano con Iris, che è una mod Fabric e legge
-            // anche il formato OptiFine.
-            (Self::Shader, Some(LoaderKind::Fabric)) => Ok(&["iris", "optifine"]),
-            (Self::Shader, None) => Err(ContentError::ShadersNeedFabric),
+            // Un modpack porta con sé il suo loader: vanno bene tutti quelli
+            // che sappiamo installare.
+            (Self::Modpack, _) => Ok(&["fabric", "quilt", "neoforge", "forge"]),
+            // Gli shader si caricano con Iris (Fabric, Quilt, NeoForge), che
+            // legge anche il formato OptiFine.
+            (Self::Shader, Some(Fabric | Quilt | NeoForge)) => Ok(&["iris", "optifine"]),
+            (Self::Shader, _) => Err(ContentError::ShadersNeedIris),
             (Self::ResourcePack, _) => Ok(&["minecraft"]),
             (Self::DataPack, _) => Ok(&["datapack"]),
         }
@@ -115,7 +120,7 @@ mod tests {
         ));
         assert!(matches!(
             ContentKind::Shader.loaders(None),
-            Err(ContentError::ShadersNeedFabric)
+            Err(ContentError::ShadersNeedIris)
         ));
         assert_eq!(
             ContentKind::ResourcePack.loaders(None).unwrap(),

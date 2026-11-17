@@ -1,6 +1,6 @@
 // Etichette e regole condivise dalle schermate del catalogo.
 
-import type { ContentDirName, ContentKind, Instance } from './api';
+import type { ContentDirName, ContentKind, Instance, LoaderKind } from './api';
 
 export const KINDS: { kind: ContentKind; label: string }[] = [
   { kind: 'mod', label: 'Mod' },
@@ -34,11 +34,20 @@ export function dirOf(kind: ContentKind): ContentDirName | null {
 
 /** Perché questo contenuto non si può installare nell'istanza (o null). */
 export function incompatibility(kind: ContentKind, instance: Instance | null): string | null {
-  if (!instance || instance.loader) return null;
-  if (kind === 'mod') return 'Questa istanza è Vanilla: le mod funzionano solo con Fabric. Crea un’istanza Fabric per installarle.';
-  if (kind === 'shader') return 'Questa istanza è Vanilla: gli shader funzionano con Iris, che richiede Fabric.';
+  if (!instance) return null;
+  if (kind === 'mod' && !instance.loader) return 'Questa istanza è Vanilla: per le mod serve un loader (Fabric, Quilt, NeoForge o Forge).';
+  if (kind === 'shader' && (!instance.loader || instance.loader.kind === 'forge'))
+    return 'Gli shader funzionano con Iris, disponibile per Fabric, Quilt e NeoForge.';
   return null;
 }
+
+/** Mod loader supportati, con il nome da mostrare (id = nome Modrinth). */
+export const LOADERS: [LoaderKind, string][] = [
+  ['fabric', 'Fabric'],
+  ['quilt', 'Quilt'],
+  ['neoforge', 'NeoForge'],
+  ['forge', 'Forge'],
+];
 
 /** Iris: il launcher lo aggiunge da solo quando serve per uno shader. */
 export const IRIS_PROJECT_ID = 'YL57xq9U';

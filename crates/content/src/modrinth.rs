@@ -75,6 +75,8 @@ pub struct SearchQuery {
     pub game_version: Option<String>,
     /// Categorie Modrinth (es. `optimization`), tutte richieste.
     pub categories: Vec<String>,
+    /// Loader Modrinth ammessi (uno qualsiasi); vuoto = nessun filtro.
+    pub loaders: Vec<String>,
     pub sort: SearchSort,
     pub offset: u32,
     pub limit: u32,
@@ -87,6 +89,7 @@ impl SearchQuery {
             kind,
             game_version: None,
             categories: Vec::new(),
+            loaders: Vec::new(),
             sort: SearchSort::Relevance,
             offset: 0,
             limit: 20,
@@ -105,17 +108,32 @@ impl SearchQuery {
         {
             facets.push(vec![format!("versions:{game}")]);
         }
-        // Filtro sul loader: le mod e i modpack devono essere per Fabric,
-        // gli shader per Iris/OptiFine (gli unici che sappiamo caricare).
-        match self.kind {
-            ContentKind::Mod | ContentKind::Modpack => {
-                facets.push(vec!["categories:fabric".to_owned()]);
-            }
-            ContentKind::Shader => facets.push(vec![
+        // Filtro sul loader (in OR). "minecraft" e "datapack" sono impliciti
+        // nel tipo di progetto e non sono categorie da filtrare.
+        let loaders: Vec<String> = self
+            .loaders
+            .iter()
+            .filter(|l| !matches!(l.as_str(), "minecraft" | "datapack"))
+            .map(|l| format!("categories:{l}"))
+            .collect();
+        if !loaders.is_empty() {
+            facets.push(loaders);
+        } else if self.kind == ContentKind::Modpack {
+            // Solo i modpack per loader che sappiamo installare.
+            facets.push(
+                ContentKind::Modpack
+                    .loaders(None)
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|l| format!("categories:{l}"))
+                    .collect(),
+            );
+        } else if self.kind == ContentKind::Shader {
+            // Gli unici shader che sappiamo caricare (tramite Iris).
+            facets.push(vec![
                 "categories:iris".to_owned(),
                 "categories:optifine".to_owned(),
-            ]),
-            ContentKind::ResourcePack | ContentKind::DataPack => {}
+            ]);
         }
         for category in &self.categories {
             facets.push(vec![format!("categories:{category}")]);
@@ -142,6 +160,12 @@ pub struct SearchHit {
     pub icon_url: Option<String>,
     pub downloads: u64,
     pub date_modified: String,
+    /// Immagine in evidenza della galleria (per le schede del catalogo).
+    pub featured_gallery: Option<String>,
+    #[serde(default)]
+    pub gallery: Vec<String>,
+    /// Colore dominante dell'icona (RGB), usato se manca l'immagine.
+    pub color: Option<u32>,
     #[serde(default)]
     pub display_categories: Vec<String>,
     pub project_type: String,
@@ -460,6 +484,7 @@ pub(crate) mod tests {
     fn builds_facets_per_kind() {
         let mut q = SearchQuery::new("sodium", ContentKind::Mod);
         q.game_version = Some("26.3".into());
+        q.loaders = vec!["fabric".into()];
         q.categories = vec!["optimization".into()];
         assert_eq!(
             q.facets(),

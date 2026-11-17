@@ -69,6 +69,11 @@ impl Instance {
         self.content_dir(ContentDir::Mods)
     }
 
+    /// Impostazioni di gioco dell'istanza.
+    pub fn options_file(&self) -> PathBuf {
+        self.game_dir().join("options.txt")
+    }
+
     pub fn saves_dir(&self) -> PathBuf {
         self.game_dir().join("saves")
     }

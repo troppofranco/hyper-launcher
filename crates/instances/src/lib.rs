@@ -19,6 +19,18 @@ pub use prepare::{PreparedLaunch, RunningGame, install, prepare_launch, resolve_
 
 pub use hyper_core::MIN_MEMORY_MB;
 
+/// Storico delle partite di un'istanza (accanto a `instance.toml`).
+const SESSIONS_FILE: &str = "sessions.json";
+/// Sessioni conservate per istanza: abbastanza per mesi di statistiche.
+const MAX_SESSIONS: usize = 1000;
+
+/// Una partita: inizio e fine in secondi dall'epoch Unix.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlaySession {
+    pub start: u64,
+    pub end: u64,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum InstanceError {
     #[error(transparent)]
@@ -91,6 +103,13 @@ pub struct InstanceConfig {
     /// Tempo di gioco totale in secondi.
     #[serde(default)]
     pub playtime_secs: u64,
+    /// Usa le impostazioni condivise (se la sincronizzazione è attiva).
+    #[serde(default = "default_true")]
+    pub sync_settings: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl InstanceConfig {
@@ -150,11 +169,30 @@ impl Instance {
         Ok(fs::write_toml(&Self::config_path(&self.dir), &self.config)?)
     }
 
-    /// Registra una sessione di gioco terminata e salva `instance.toml`.
+    /// Registra una sessione di gioco terminata: totale e ultima partita in
+    /// `instance.toml`, la sessione nello storico (per le statistiche).
     pub fn record_session(&mut self, started: u64, ended: u64) -> Result<()> {
         self.config.playtime_secs += ended.saturating_sub(started);
         self.config.last_played = Some(ended);
-        self.save()
+        self.save()?;
+        let mut sessions = self.sessions();
+        sessions.push(PlaySession {
+            start: started,
+            end: ended,
+        });
+        let excess = sessions.len().saturating_sub(MAX_SESSIONS);
+        sessions.drain(..excess);
+        let json = serde_json::to_vec(&sessions).expect("sessions serialize");
+        Ok(fs::write_atomic(&self.dir.join(SESSIONS_FILE), &json)?)
+    }
+
+    /// Storico delle sessioni di gioco (dalla più vecchia); vuoto se manca
+    /// o è illeggibile, perché serve solo alle statistiche.
+    pub fn sessions(&self) -> Vec<PlaySession> {
+        std::fs::read(self.dir.join(SESSIONS_FILE))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .unwrap_or_default()
     }
 
     /// Rilegge da disco la stessa istanza.
@@ -207,6 +245,7 @@ impl InstanceManager {
                 created: hyper_core::unix_now(),
                 last_played: None,
                 playtime_secs: 0,
+                sync_settings: true,
             },
             dir,
         };
@@ -376,5 +415,32 @@ mod tests {
             manager.load("Fabric 26.3"),
             Err(InstanceError::NotFound(_))
         ));
+    }
+
+    #[test]
+    fn records_sessions_for_statistics() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut instance = InstanceManager::new(Paths::new(dir.path()))
+            .create("s", "26.3", None)
+            .unwrap();
+        assert!(instance.sessions().is_empty());
+        instance.record_session(1000, 1600).unwrap();
+        instance.record_session(5000, 5060).unwrap();
+        assert_eq!(instance.config.playtime_secs, 660);
+        assert_eq!(instance.config.last_played, Some(5060));
+        let sessions = instance.sessions();
+        assert_eq!(sessions.len(), 2);
+        assert_eq!(
+            sessions[0],
+            PlaySession {
+                start: 1000,
+                end: 1600
+            }
+        );
+        // Un file rovinato non blocca il gioco: si riparte da zero.
+        std::fs::write(instance.dir.join(SESSIONS_FILE), b"{oops").unwrap();
+        assert!(instance.sessions().is_empty());
+        instance.record_session(7000, 7100).unwrap();
+        assert_eq!(instance.sessions().len(), 1);
     }
 }

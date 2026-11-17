@@ -29,6 +29,10 @@ export interface ExploreState {
   instance: string | null;
   category: string | null;
   sort: SearchSort;
+  /** Filtri usati solo senza istanza (con un'istanza valgono i suoi). */
+  gameVersion: string | null;
+  loaders: string[];
+  layout: 'grid' | 'list';
 }
 
 const MAX_LOG_LINES = 2500;
@@ -45,9 +49,14 @@ class AppStore {
   update = $state<UpdateInfo | null>(null);
   launches = $state<Record<string, LaunchState>>({});
   logs = $state<Record<string, LogLine[]>>({});
-  explore = $state<ExploreState>({ text: '', kind: 'mod', instance: null, category: null, sort: 'relevance' });
+  explore = $state<ExploreState>({
+    text: '', kind: 'mod', instance: null, category: null, sort: 'relevance',
+    gameVersion: null, loaders: [], layout: 'grid',
+  });
   /** Download di contenuti in corso, per istanza (`''` = import di un modpack). */
   contentProgress = $state<Record<string, { done: number; total: number }>>({});
+  /** Cresce a ogni partita finita: chi mostra statistiche si ricarica. */
+  sessionsRev = $state(0);
   toast = $state<{ kind: 'error' | 'info'; text: string } | null>(null);
   newInstanceOpen = $state(false);
   addAccountOpen = $state(false);
@@ -73,6 +82,7 @@ class AppStore {
       on('instance-state', (s) => {
         if (s.state === 'stopped') {
           delete this.launches[s.instance];
+          this.sessionsRev++;
           if (s.error) this.error(s.error);
           else if (s.exitCode !== null && s.exitCode !== 0) this.error(`Minecraft si è chiuso con un errore (codice ${s.exitCode}). Guarda la console.`);
           void this.refreshInstances();

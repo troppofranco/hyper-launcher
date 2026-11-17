@@ -5,7 +5,7 @@ import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { listen as tauriListen, type UnlistenFn } from '@tauri-apps/api/event';
 import { mock } from './mock';
 
-export type LoaderKind = 'fabric';
+export type LoaderKind = 'fabric' | 'quilt' | 'neoforge' | 'forge';
 export interface Loader { kind: LoaderKind; name: string; version: string }
 export interface Instance {
   name: string;
@@ -17,6 +17,7 @@ export interface Instance {
   memoryMb: number | null;
   javaPath: string | null;
   jvmArgs: string[];
+  syncSettings: boolean;
 }
 export interface Account { name: string; uuid: string; kind: 'offline' | 'microsoft'; default: boolean }
 export interface VersionInfo { id: string; kind: string; releaseTime: string }
@@ -24,7 +25,7 @@ export interface Versions { latestRelease: string; latestSnapshot: string; versi
 export type ContentKind = 'mod' | 'resourcepack' | 'shader' | 'datapack' | 'modpack';
 export type ContentDirName = 'mods' | 'resourcepacks' | 'shaderpacks';
 export type SearchSort = 'relevance' | 'downloads' | 'updated';
-export interface SearchHit { id: string; slug: string; title: string; description: string; author: string; iconUrl: string | null; downloads: number; updated: string; categories: string[] }
+export interface SearchHit { id: string; slug: string; title: string; description: string; author: string; iconUrl: string | null; image: string | null; color: number | null; downloads: number; updated: string; categories: string[] }
 export interface SearchResults { hits: SearchHit[]; total: number }
 export interface Project {
   id: string; slug: string; title: string; description: string; projectType: ContentKind; downloads: number;
@@ -39,7 +40,7 @@ export interface InstalledContent {
   versionNumber: string | null; update: string | null;
 }
 export interface ExportResult { path: string; linked: number; bundled: number }
-export interface SearchInput { text: string; kind: ContentKind; instance: string | null; categories: string[]; sort: SearchSort; offset: number }
+export interface SearchInput { text: string; kind: ContentKind; instance: string | null; gameVersion: string | null; loaders: string[]; categories: string[]; sort: SearchSort; offset: number }
 export interface World { name: string; lastPlayed: number | null }
 export interface News { title: string; date: string; text: string; image: string | null; url: string }
 export interface AppInfo { version: string; build: number | null; dataDir: string }
@@ -50,8 +51,11 @@ export interface Settings {
   msaClientId: string;
   accent: string;
   minimizeOnLaunch: boolean;
+  sync: SyncSettings;
 }
-export interface InstanceSettings { memoryMb: number | null; javaPath: string | null; jvmArgs: string }
+export interface SyncSettings { enabled: boolean; keybinds: boolean; video: boolean; audio: boolean; controls: boolean }
+export interface PlaySession { instance: string; start: number; end: number }
+export interface InstanceSettings { memoryMb: number | null; javaPath: string | null; jvmArgs: string; syncSettings: boolean }
 
 export interface ProgressEvent { instance: string; stage: 'libraries' | 'assets' | 'java'; done: number; total: number; downloadedBytes: number }
 export interface LogEvent { instance: string; line: string }
@@ -110,6 +114,7 @@ export const api = {
   packImport: () => call<Instance | null>('pack_import'),
   packExport: (instance: string) => call<ExportResult | null>('pack_export', { instance }),
   listWorlds: (name: string) => call<World[]>('list_worlds', { name }),
+  recentSessions: (days: number) => call<PlaySession[]>('recent_sessions', { days }),
   openFolder: (name: string | null, folder: string) => call<void>('open_folder', { name, folder }),
   openUrl: (url: string) => call<void>('open_url', { url }),
   news: () => call<News[]>('news'),

@@ -27,6 +27,7 @@ pub struct InstanceView {
     pub memory_mb: Option<u32>,
     pub java_path: Option<String>,
     pub jvm_args: Vec<String>,
+    pub sync_settings: bool,
 }
 
 impl InstanceView {
@@ -46,6 +47,7 @@ impl InstanceView {
             memory_mb: c.memory_mb,
             java_path: c.java_path.as_ref().map(|p| p.display().to_string()),
             jvm_args: c.jvm_args.clone(),
+            sync_settings: c.sync_settings,
         }
     }
 }
@@ -136,6 +138,9 @@ pub struct SearchHitView {
     pub description: String,
     pub author: String,
     pub icon_url: Option<String>,
+    /// Immagine di copertina (galleria del progetto), se c'è.
+    pub image: Option<String>,
+    pub color: Option<u32>,
     pub downloads: u64,
     pub updated: String,
     pub categories: Vec<String>,
@@ -162,6 +167,8 @@ impl From<SearchResults> for SearchView {
                     description: h.description,
                     author: h.author,
                     icon_url: h.icon_url,
+                    image: h.featured_gallery.or_else(|| h.gallery.into_iter().next()),
+                    color: h.color,
                     downloads: h.downloads,
                     updated: h.date_modified,
                     categories: h.display_categories,
@@ -316,6 +323,14 @@ impl From<InstalledContent> for ContentView {
             ..Self::from(c.file)
         }
     }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionView {
+    pub instance: String,
+    pub start: u64,
+    pub end: u64,
 }
 
 #[derive(Serialize)]

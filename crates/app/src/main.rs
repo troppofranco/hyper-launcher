@@ -59,6 +59,7 @@ fn main() {
             content::pack_import,
             content::pack_export,
             commands::list_worlds,
+            commands::recent_sessions,
             commands::open_folder,
             commands::open_url,
             commands::news,

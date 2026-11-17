@@ -24,6 +24,12 @@ pub struct SearchInput {
     pub kind: ContentKind,
     /// Mostra solo ciò che è compatibile con questa istanza.
     pub instance: Option<String>,
+    /// Versione di Minecraft scelta nei filtri (senza istanza).
+    #[serde(default)]
+    pub game_version: Option<String>,
+    /// Loader scelti nei filtri; vuoto = quelli dell'istanza (se c'è).
+    #[serde(default)]
+    pub loaders: Vec<String>,
     #[serde(default)]
     pub categories: Vec<String>,
     #[serde(default)]
@@ -38,8 +44,17 @@ pub async fn content_search(
     input: SearchInput,
 ) -> CmdResult<SearchView> {
     let mut query = SearchQuery::new(input.text, input.kind);
+    query.loaders = input.loaders;
+    query.game_version = input.game_version.filter(|v| !v.is_empty());
     if let Some(name) = input.instance {
-        query.game_version = Some(state.instances().load(&name).cmd()?.config.version);
+        let config = state.instances().load(&name).cmd()?.config;
+        if query.loaders.is_empty() {
+            let loader = config.loader.as_ref().map(|l| l.kind);
+            if let Ok(loaders) = input.kind.loaders(loader) {
+                query.loaders = loaders.iter().map(|l| (*l).to_owned()).collect();
+            }
+        }
+        query.game_version = Some(config.version);
     }
     query.categories = input.categories;
     query.sort = input.sort;

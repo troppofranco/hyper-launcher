@@ -10,15 +10,15 @@ const now = () => Math.floor(Date.now() / 1000);
 
 const state: { instances: Instance[]; accounts: Account[]; settings: Settings; mods: InstalledContent[] } = {
   instances: [
-    { name: 'Sopravvivenza', version: '26.3', loader: { kind: 'fabric', name: 'Fabric', version: '0.20.1' }, created: now() - 86400 * 3, lastPlayed: now() - 3600, playtimeSecs: 5880, memoryMb: 6144, javaPath: null, jvmArgs: [] },
-    { name: 'Minecraft 26.3', version: '26.3', loader: null, created: now() - 86400 * 5, lastPlayed: now() - 86400, playtimeSecs: 720, memoryMb: null, javaPath: null, jvmArgs: [] },
-    { name: 'Snapshot', version: '26.4-snapshot-8', loader: null, created: now() - 3600, lastPlayed: null, playtimeSecs: 0, memoryMb: null, javaPath: null, jvmArgs: [] },
+    { name: 'Sopravvivenza', version: '26.3', loader: { kind: 'fabric', name: 'Fabric', version: '0.20.1' }, created: now() - 86400 * 3, lastPlayed: now() - 3600, playtimeSecs: 5880, memoryMb: 6144, javaPath: null, jvmArgs: [], syncSettings: true },
+    { name: 'Minecraft 26.3', version: '26.3', loader: null, created: now() - 86400 * 5, lastPlayed: now() - 86400, playtimeSecs: 720, memoryMb: null, javaPath: null, jvmArgs: [], syncSettings: true },
+    { name: 'Snapshot', version: '26.4-snapshot-8', loader: null, created: now() - 3600, lastPlayed: null, playtimeSecs: 0, memoryMb: null, javaPath: null, jvmArgs: [], syncSettings: true },
   ],
   accounts: [
     { name: 'TroppoFranco', uuid: '069a79f4-44e9-4726-a5be-fca90e38aaf5', kind: 'microsoft', default: true },
     { name: 'Dev', uuid: '380df991-f603-344c-a090-369bad2a924a', kind: 'offline', default: false },
   ],
-  settings: { defaultMemoryMb: 4096, javaPath: '', msaClientId: '', accent: '#6e5ae6', minimizeOnLaunch: true },
+  settings: { defaultMemoryMb: 4096, javaPath: '', msaClientId: '', accent: '#6e5ae6', minimizeOnLaunch: true, sync: { enabled: false, keybinds: true, video: true, audio: true, controls: true } },
   mods: [
     { file: 'sodium-fabric-0.9.2+mc26.3.jar', name: 'sodium-fabric-0.9.2+mc26.3', enabled: true, sizeBytes: 1_200_000, projectId: 'AANobbMI', slug: 'sodium', title: 'Sodium', iconUrl: null, versionNumber: 'mc26.3-0.9.2-fabric', update: 'mc26.3-0.9.3-fabric' },
     { file: 'fabric-api-0.166.2+26.3.jar', name: 'fabric-api-0.166.2+26.3', enabled: true, sizeBytes: 2_400_000, projectId: 'P7dR8mSH', slug: 'fabric-api', title: 'Fabric API', iconUrl: null, versionNumber: '0.166.2+26.3', update: null },
@@ -28,10 +28,10 @@ const state: { instances: Instance[]; accounts: Account[]; settings: Settings; m
 };
 
 const HITS: SearchHit[] = [
-  { id: 'AANobbMI', slug: 'sodium', title: 'Sodium', description: 'A high-performance rendering engine replacement for Minecraft.', author: 'jellysquid3', iconUrl: null, downloads: 253_432_494, updated: '2026-11-12T01:12:22Z', categories: ['optimization'] },
-  { id: 'YL57xq9U', slug: 'iris', title: 'Iris Shaders', description: 'A modern shader pack loader for Minecraft intended to be compatible with OptiFine shaders.', author: 'coderbot', iconUrl: null, downloads: 120_000_000, updated: '2026-09-30T02:57:43Z', categories: ['optimization'] },
-  { id: 'gvQqBUqZ', slug: 'lithium', title: 'Lithium', description: 'No-compromises game logic optimization mod.', author: 'jellysquid3', iconUrl: null, downloads: 80_000_000, updated: '2026-11-05T00:00:00Z', categories: ['optimization'] },
-  { id: 'NNAgCjsB', slug: 'entityculling', title: 'Entity Culling', description: 'Using async path-tracing to hide Block-/Entities that are not visible.', author: 'tr7zw', iconUrl: null, downloads: 60_000_000, updated: '2026-10-20T00:00:00Z', categories: ['optimization'] },
+  { id: 'AANobbMI', slug: 'sodium', title: 'Sodium', description: 'A high-performance rendering engine replacement for Minecraft.', author: 'jellysquid3', iconUrl: null, image: null, color: 0x2f6fdf, downloads: 253_432_494, updated: '2026-11-12T01:12:22Z', categories: ['optimization'] },
+  { id: 'YL57xq9U', slug: 'iris', title: 'Iris Shaders', description: 'A modern shader pack loader for Minecraft intended to be compatible with OptiFine shaders.', author: 'coderbot', iconUrl: null, image: null, color: 0x2f6fdf, downloads: 120_000_000, updated: '2026-09-30T02:57:43Z', categories: ['optimization'] },
+  { id: 'gvQqBUqZ', slug: 'lithium', title: 'Lithium', description: 'No-compromises game logic optimization mod.', author: 'jellysquid3', iconUrl: null, image: null, color: 0x2f6fdf, downloads: 80_000_000, updated: '2026-11-05T00:00:00Z', categories: ['optimization'] },
+  { id: 'NNAgCjsB', slug: 'entityculling', title: 'Entity Culling', description: 'Using async path-tracing to hide Block-/Entities that are not visible.', author: 'tr7zw', iconUrl: null, image: null, color: 0x2f6fdf, downloads: 60_000_000, updated: '2026-10-20T00:00:00Z', categories: ['optimization'] },
 ];
 
 function simulateDownload(instance: string, total: number) {
@@ -76,13 +76,13 @@ const commands: Record<string, (args: Record<string, any>) => unknown> = {
   list_instances: () => structuredClone(state.instances),
   create_instance: ({ input }) => {
     const loader = input.loader === 'fabric' ? { kind: 'fabric' as const, name: 'Fabric', version: '0.20.1' } : null;
-    const inst = { name: input.name || `${loader ? 'Fabric' : 'Minecraft'} ${input.version}`, version: input.version, loader, created: now(), lastPlayed: null, playtimeSecs: 0, memoryMb: null, javaPath: null, jvmArgs: [] };
+    const inst = { name: input.name || `${loader ? 'Fabric' : 'Minecraft'} ${input.version}`, version: input.version, loader, created: now(), lastPlayed: null, playtimeSecs: 0, memoryMb: null, javaPath: null, jvmArgs: [], syncSettings: true };
     state.instances.push(inst);
     return structuredClone(inst);
   },
   update_instance: ({ name, settings }) => {
     const inst = state.instances.find((i) => i.name === name)!;
-    Object.assign(inst, { memoryMb: settings.memoryMb, javaPath: settings.javaPath, jvmArgs: settings.jvmArgs.split(/\s+/).filter(Boolean) });
+    Object.assign(inst, { memoryMb: settings.memoryMb, javaPath: settings.javaPath, jvmArgs: settings.jvmArgs.split(/\s+/).filter(Boolean), syncSettings: settings.syncSettings });
     return structuredClone(inst);
   },
   delete_instance: ({ name }) => { state.instances = state.instances.filter((i) => i.name !== name); },
@@ -147,12 +147,21 @@ const commands: Record<string, (args: Record<string, any>) => unknown> = {
   },
   pack_install: async () => {
     await simulateDownload('', 4);
-    const inst = { name: 'Fabulously Optimized', version: '26.3', loader: { kind: 'fabric' as const, name: 'Fabric', version: '0.20.1' }, created: now(), lastPlayed: null, playtimeSecs: 0, memoryMb: null, javaPath: null, jvmArgs: [] };
+    const inst = { name: 'Fabulously Optimized', version: '26.3', loader: { kind: 'fabric' as const, name: 'Fabric', version: '0.20.1' }, created: now(), lastPlayed: null, playtimeSecs: 0, memoryMb: null, javaPath: null, jvmArgs: [], syncSettings: true };
     state.instances.push(inst);
     return structuredClone(inst);
   },
   pack_import: () => null,
   pack_export: ({ instance }) => ({ path: `C:\\Users\\utente\\Documents\\${instance}.mrpack`, linked: 3, bundled: 1 }),
+  recent_sessions: () => {
+    const day = 86400;
+    const t = now();
+    return [
+      { instance: 'Sopravvivenza', start: t - day * 3 - 5400, end: t - day * 3 },
+      { instance: 'Sopravvivenza', start: t - day - 1800, end: t - day },
+      { instance: 'Minecraft 26.3', start: t - 2600, end: t - 600 },
+    ];
+  },
   list_worlds: () => [{ name: 'Nuovo mondo', lastPlayed: now() - 3600 }, { name: 'Creativa', lastPlayed: now() - 86400 * 3 }],
   open_folder: () => undefined,
   open_url: ({ url }) => { window.open(url, '_blank'); },

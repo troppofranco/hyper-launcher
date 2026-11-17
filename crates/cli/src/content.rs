@@ -79,7 +79,11 @@ pub async fn content(app: &App, cmd: ContentCommand) -> Result<()> {
         } => {
             let mut query = SearchQuery::new(text, kind);
             if let Some(name) = instance {
-                query.game_version = Some(app.instances().load(&name)?.config.version);
+                let config = app.instances().load(&name)?.config;
+                if let Ok(loaders) = kind.loaders(config.loader.as_ref().map(|l| l.kind)) {
+                    query.loaders = loaders.iter().map(|l| (*l).to_owned()).collect();
+                }
+                query.game_version = Some(config.version);
             }
             let results = api.search(&query).await?;
             println!("{} risultati", results.total_hits);

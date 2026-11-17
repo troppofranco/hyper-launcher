@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use hyper_auth::{Account, AccountStore, AuthError, KeyringStore, MsaClient};
-use hyper_core::Config;
+use hyper_core::{Config, SyncConfig};
 use hyper_installer::{LoaderKind, VersionKind, self_update};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -12,7 +12,8 @@ use tauri_plugin_opener::OpenerExt;
 
 use crate::state::{AppState, CmdResult, OrCmd};
 use crate::views::{
-    AccountView, AppInfo, InstanceView, NewsView, UpdateView, VersionView, VersionsView, WorldView,
+    AccountView, AppInfo, InstanceView, NewsView, SessionView, UpdateView, VersionView,
+    VersionsView, WorldView,
 };
 
 // ---------- App ----------
@@ -72,6 +73,7 @@ pub struct InstanceSettings {
     pub memory_mb: Option<u32>,
     pub java_path: Option<String>,
     pub jvm_args: String,
+    pub sync_settings: bool,
 }
 
 #[tauri::command]
@@ -92,6 +94,7 @@ pub fn update_instance(
         .split_whitespace()
         .map(str::to_owned)
         .collect();
+    instance.config.sync_settings = settings.sync_settings;
     // Valida subito, così la UI mostra l'errore invece di fallire all'avvio.
     instance.config.effective_memory_mb(&state.config()).cmd()?;
     instance.save().cmd()?;
@@ -260,6 +263,7 @@ pub struct SettingsView {
     pub msa_client_id: String,
     pub accent: String,
     pub minimize_on_launch: bool,
+    pub sync: SyncConfig,
 }
 
 #[tauri::command]
@@ -274,6 +278,7 @@ pub fn get_settings(state: State<'_, AppState>) -> SettingsView {
         msa_client_id: c.msa_client_id.unwrap_or_default(),
         accent: c.accent,
         minimize_on_launch: c.minimize_on_launch,
+        sync: c.sync,
     }
 }
 
@@ -288,9 +293,48 @@ pub fn save_settings(state: State<'_, AppState>, settings: SettingsView) -> CmdR
         msa_client_id: non_empty(settings.msa_client_id),
         accent: settings.accent.trim().to_owned(),
         minimize_on_launch: settings.minimize_on_launch,
+        sync: settings.sync,
         ..state.config()
     };
     state.save_config(config).cmd()
+}
+
+// ---------- Statistiche ----------
+
+/// Partite degli ultimi `days` giorni di tutte le istanze; la UI le
+/// raggruppa per giorno nel fuso orario locale.
+#[tauri::command]
+pub async fn recent_sessions(state: State<'_, AppState>, days: u64) -> CmdResult<Vec<SessionView>> {
+    let since = hyper_core::unix_now().saturating_sub(days.min(366) * 86_400);
+    let manager = state.instances();
+    // Lettura da disco fuori dal thread dell'interfaccia.
+    tauri::async_runtime::spawn_blocking(move || sessions_since(&manager, since))
+        .await
+        .cmd()?
+}
+
+fn sessions_since(
+    manager: &hyper_instances::InstanceManager,
+    since: u64,
+) -> CmdResult<Vec<SessionView>> {
+    let instances = manager.list().cmd()?;
+    let mut sessions: Vec<SessionView> = instances
+        .iter()
+        // Chi non gioca da prima della finestra non ha sessioni utili.
+        .filter(|i| i.config.last_played.is_some_and(|t| t >= since))
+        .flat_map(|i| {
+            i.sessions()
+                .into_iter()
+                .filter(|s| s.end >= since)
+                .map(|s| SessionView {
+                    instance: i.config.name.clone(),
+                    start: s.start,
+                    end: s.end,
+                })
+        })
+        .collect();
+    sessions.sort_by_key(|s| s.start);
+    Ok(sessions)
 }
 
 // ---------- Mondi, cartelle ----------

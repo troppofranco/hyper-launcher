@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::process::{Child, ExitStatus};
 
 use hyper_auth::Session;
-use hyper_core::Config;
+use hyper_core::{Config, SyncConfig};
 use hyper_installer::{InstalledVersion, Installer, InstallerError, StageProgressFn};
 
 use crate::console::{GameOutput, Log4jParser};
@@ -77,6 +77,17 @@ pub struct PreparedLaunch {
     pub installed: InstalledVersion,
     instance: Instance,
     lock: File,
+    sync: Option<SettingsSync>,
+}
+
+/// Dove e cosa sincronizzare a fine partita.
+#[derive(Debug, Clone)]
+struct SettingsSync {
+    shared: PathBuf,
+    config: SyncConfig,
+    /// `options.txt` dell'istanza all'avvio: a fine partita si condivide
+    /// solo ciò che è cambiato rispetto a questo.
+    baseline: Option<hyper_sync::OptionsFile>,
 }
 
 /// Gioco in esecuzione; il lock dell'istanza vive quanto questo valore.
@@ -86,6 +97,7 @@ pub struct RunningGame {
     program: PathBuf,
     instance: Instance,
     started: u64,
+    sync: Option<SettingsSync>,
     _lock: File,
 }
 
@@ -103,6 +115,26 @@ pub async fn prepare_launch(
     let lock = instance.try_lock()?;
     let (installed, java) = install(installer, instance, config, java_override, progress).await?;
     let natives = prepare_natives(instance, &installed)?;
+    // Impostazioni condivise (tasti, video…) copiate nell'istanza; un errore
+    // qui non deve impedire di giocare.
+    let enabled = config.sync.enabled
+        && instance.config.sync_settings
+        && hyper_sync::supports_game(&instance.config.version);
+    let sync = enabled.then(|| {
+        let shared = installer.paths().shared_options_file();
+        let baseline = match hyper_sync::pull(&shared, &instance.options_file(), &config.sync) {
+            Ok(baseline) => baseline,
+            Err(e) => {
+                tracing::warn!(error = %e, "cannot apply shared settings");
+                None
+            }
+        };
+        SettingsSync {
+            shared,
+            config: config.sync,
+            baseline,
+        }
+    });
     tracing::debug!(natives, "native libraries extracted");
 
     let command = build_command(
@@ -120,6 +152,7 @@ pub async fn prepare_launch(
         installed,
         instance: instance.clone(),
         lock,
+        sync,
     })
 }
 
@@ -133,6 +166,7 @@ impl PreparedLaunch {
             program: self.command.program,
             instance: self.instance,
             started: hyper_core::unix_now(),
+            sync: self.sync,
             _lock: self.lock,
         })
     }
@@ -168,6 +202,16 @@ impl RunningGame {
         let mut instance = Instance::reload(&self.instance).unwrap_or(self.instance);
         if let Err(e) = instance.record_session(self.started, hyper_core::unix_now()) {
             tracing::warn!(error = %e, "cannot record playtime");
+        }
+        if let Some(sync) = &self.sync
+            && let Err(e) = hyper_sync::push(
+                &instance.options_file(),
+                &sync.shared,
+                &sync.config,
+                sync.baseline.as_ref(),
+            )
+        {
+            tracing::warn!(error = %e, "cannot save shared settings");
         }
         Ok(status)
     }

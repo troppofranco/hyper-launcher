@@ -35,9 +35,38 @@ pub struct VersionJson {
 }
 
 impl VersionJson {
+    /// Componente del runtime Java Mojang richiesto (quello "legacy" per le
+    /// versioni che non lo dichiarano).
+    pub fn java_component(&self) -> &str {
+        self.java_version
+            .as_ref()
+            .map_or(crate::java::LEGACY_COMPONENT, |j| j.component.as_str())
+    }
+
     /// Id della versione il cui `<id>.jar` va nel classpath.
     pub fn jar_id(&self) -> &str {
         self.jar.as_deref().unwrap_or(&self.id)
+    }
+
+    /// Nome con cui mettere il client jar: di solito quello della versione
+    /// vanilla, ma Forge lo cerca come `<id della versione>.jar` (ce l'ha
+    /// nel suo `-DignoreList=…,${version_name}.jar`) per escluderlo dai
+    /// moduli; con il nome vanilla il gioco si fermerebbe all'avvio.
+    pub fn client_jar_id(&self) -> &str {
+        let wants_own_name = self.arguments.as_ref().is_some_and(|a| {
+            a.jvm.iter().any(|arg| match arg {
+                Argument::Plain(s) => s.contains("${version_name}.jar"),
+                Argument::Conditional { value, .. } => match value {
+                    ArgValue::One(s) => s.contains("${version_name}.jar"),
+                    ArgValue::Many(v) => v.iter().any(|s| s.contains("${version_name}.jar")),
+                },
+            })
+        });
+        if wants_own_name {
+            &self.id
+        } else {
+            self.jar_id()
+        }
     }
 
     /// Fonde questo profilo (figlio, es. Fabric) sulla versione da cui
@@ -549,5 +578,23 @@ mod tests {
             Some(&"-DFabricMcEmu= net.minecraft.client.main.Main ")
         );
         assert!(jvm.contains(&"${classpath}"));
+    }
+
+    #[test]
+    fn forge_profiles_get_a_client_jar_named_after_them() {
+        let forge: VersionJson = serde_json::from_str(
+            r#"{"id": "1.20.1-forge-47.4.28", "type": "release", "inheritsFrom": "1.20.1", "mainClass": "x", "libraries": [],
+                "arguments": {"jvm": ["-DignoreList=forge-,${version_name}.jar"]}}"#,
+        )
+        .unwrap();
+        let vanilla: VersionJson = serde_json::from_str(
+            r#"{"id": "1.20.1", "type": "release", "mainClass": "y", "libraries": [], "arguments": {"jvm": ["-cp", "${classpath}"]}}"#,
+        )
+        .unwrap();
+        let merged = forge.inherit(vanilla.clone());
+        assert_eq!(merged.jar_id(), "1.20.1");
+        assert_eq!(merged.client_jar_id(), "1.20.1-forge-47.4.28");
+        // Vanilla e Fabric continuano a usare il jar vanilla.
+        assert_eq!(vanilla.client_jar_id(), "1.20.1");
     }
 }

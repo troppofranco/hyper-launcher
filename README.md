@@ -3,11 +3,11 @@
 Launcher di Minecraft moderno e performante, scritto in Rust.
 
 > **Stato:** app grafica (Tauri + Svelte) e CLI (`hyper`) che installano e
-> avviano Minecraft vanilla o con **Fabric**, con account offline o
+> avviano Minecraft vanilla o con **Fabric, Quilt, NeoForge o Forge**, con account offline o
 > Microsoft, istanze isolate, aggiornamenti automatici e il catalogo
 > **Modrinth** (mod, resource pack, shader, data pack, modpack `.mrpack`).
-> CurseForge, Quilt/Forge/NeoForge e la sync delle impostazioni arriveranno
-> nelle fasi successive (vedi [CLAUDE.md](CLAUDE.md)).
+> Tasti e impostazioni grafiche si possono sincronizzare tra le istanze.
+> CurseForge arriverà in una fase successiva (vedi [CLAUDE.md](CLAUDE.md)).
 
 ## Installazione (Windows)
 
@@ -25,11 +25,16 @@ verificato con SHA1.
 
 ## Uso
 
-L'app: Home con le istanze recenti e il tempo di gioco, Libreria, **Esplora**
+L'app: Home con le istanze recenti e il tempo di gioco della settimana, Libreria, **Esplora**
 (catalogo Modrinth con installazione delle dipendenze in un clic), pagina
 dell'istanza (Gioca, mod, resource pack e shader con aggiornamenti, mondi,
 console, impostazioni, esporta `.mrpack`), account offline o Microsoft dal
-menu in alto a sinistra, Impostazioni.
+menu in alto a sinistra, Impostazioni (con la **sincronizzazione** di tasti,
+video, audio e controlli tra le istanze).
+
+NeoForge e Forge si installano eseguendo il loro installer ufficiale
+(scaricato dal Maven ufficiale e verificato con SHA1) al primo avvio
+dell'istanza; Fabric e Quilt usano i profili delle loro API.
 
 La CLI:
 
@@ -38,7 +43,7 @@ hyper versions                                         # versioni disponibili
 hyper account add-offline <nome>                       # account offline
 hyper account add-microsoft                            # account Microsoft (vedi sotto)
 hyper instance create <nome> --version latest          # istanza vanilla
-hyper instance create <nome> --version 26.3 --loader fabric
+hyper instance create <nome> --version 26.3 --loader fabric   # o quilt, neoforge, forge
 hyper launch <nome>                                    # installa (se serve) e avvia
 hyper launch <nome> --dry-run                          # mostra il comando senza avviare
 hyper content search sodium --instance <nome>         # cerca su Modrinth (alias: hyper mod)
@@ -73,9 +78,9 @@ npm --prefix ui run dev                           # UI nel browser con backend s
 |---|---|
 | `hyper-core` | percorsi, configurazione, filesystem sicuro (anti path traversal) |
 | `hyper-auth` | account offline e Microsoft, token nel keyring |
-| `hyper-installer` | version manifest, Fabric, download paralleli verificati SHA1, asset, native, runtime Java, aggiornamenti |
+| `hyper-installer` | version manifest, Fabric/Quilt/NeoForge/Forge, download paralleli verificati SHA1, asset, native, runtime Java, aggiornamenti |
 | `hyper-instances` | istanze isolate, mod/resource pack/shader e mondi, comando di avvio, pipeline di lancio, console |
 | `hyper-content` | catalogo Modrinth: ricerca, installazione con dipendenze, aggiornamenti, modpack `.mrpack` |
-| `hyper-sync` | parser di `options.txt` (scheletro) |
+| `hyper-sync` | sincronizzazione di `options.txt` tra le istanze (tasti, video, audio, controlli) |
 | `hyper-cli` | binario `hyper` |
 | `hyper-app` + `ui/` | app grafica `hyper-launcher` (Tauri 2 + Svelte 5) |

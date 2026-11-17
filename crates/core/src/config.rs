@@ -21,6 +21,33 @@ pub struct Config {
     pub accent: String,
     /// Riduce a icona la finestra del launcher quando il gioco parte.
     pub minimize_on_launch: bool,
+    /// Impostazioni di gioco condivise tra le istanze.
+    pub sync: SyncConfig,
+}
+
+/// Quali impostazioni di `options.txt` condividere tra le istanze.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct SyncConfig {
+    /// Spenta finché l'utente non la attiva: cambia le impostazioni di
+    /// tutte le istanze.
+    pub enabled: bool,
+    pub keybinds: bool,
+    pub video: bool,
+    pub audio: bool,
+    pub controls: bool,
+}
+
+impl Default for SyncConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            keybinds: true,
+            video: true,
+            audio: true,
+            controls: true,
+        }
+    }
 }
 
 impl Default for Config {
@@ -32,6 +59,7 @@ impl Default for Config {
             msa_client_id: None,
             accent: "#6e5ae6".into(),
             minimize_on_launch: true,
+            sync: SyncConfig::default(),
         }
     }
 }

@@ -253,6 +253,7 @@ mod tests {
                 created: 0,
                 last_played: None,
                 playtime_secs: 0,
+                sync_settings: true,
             },
             dir: PathBuf::from("inst"),
         }

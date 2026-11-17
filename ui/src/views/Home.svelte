@@ -3,6 +3,7 @@
   import { loaderLabel, playtime, relativeDay } from '../lib/format';
   import InstanceIcon from '../components/InstanceIcon.svelte';
   import PlayButton from '../components/PlayButton.svelte';
+  import PlaytimeWeek from '../components/PlaytimeWeek.svelte';
 
   const quick = $derived(app.recent.slice(0, 4));
   const total = $derived(app.instances.reduce((sum, i) => sum + i.playtimeSecs, 0));
@@ -46,9 +47,11 @@
     {/if}
   </section>
 
+  <div class="two">
+  <PlaytimeWeek />
   <section class="card stats" aria-labelledby="playtime">
     <div class="stats-head">
-      <h2 id="playtime" class="section-title">Tempo di gioco</h2>
+      <h2 id="playtime" class="section-title">Per istanza</h2>
       <span class="total">{playtime(total)}</span>
     </div>
     {#if byPlaytime.length}
@@ -65,6 +68,7 @@
       <p class="muted">Il tempo di gioco comparirà dopo la prima partita.</p>
     {/if}
   </section>
+  </div>
 </div>
 
 <style>
@@ -76,6 +80,7 @@
   .name { font-weight: 600; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .empty { padding: 24px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .empty p { margin: 0; }
+  .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; align-items: start; }
   .stats { padding: 20px; }
   .stats-head { display: flex; justify-content: space-between; align-items: baseline; }
   .total { font-family: var(--display); font-size: 26px; font-weight: 600; }
