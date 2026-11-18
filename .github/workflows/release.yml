@@ -1,8 +1,8 @@
 # A ogni push su `main`: verifica (fmt, clippy, test), compila `hyper.exe`
 # in release, crea `HyperLauncher-Setup.exe` con Inno Setup e lo pubblica
-# in una nuova release `build-<N>` (N = numero progressivo del run), marcata
-# come "latest". Il launcher installato confronta il proprio numero di build
-# con quello dell'ultima release e, se è più vecchio, si aggiorna da solo.
+# in una nuova release `v0.1.<N>` (N = numero progressivo del run), marcata
+# come "latest". Il launcher installato confronta il proprio N con quello
+# dell'ultima release e, se è più vecchio, si aggiorna da solo.
 name: release
 
 on:
@@ -62,8 +62,8 @@ jobs:
         shell: bash
         run: |
           # Versione mostrata: <major>.<minor> del workspace + numero di
-          # release (es. 0.1.12), come `self_update::version_name`. Il tag
-          # resta `build-<N>`: lo cercano anche i launcher già installati.
+          # release (es. 0.1.14), come `self_update::version_name`. È anche il
+          # tag della release (`v0.1.14`); dalla 0.1.13 il launcher lo riconosce.
           base=$(sed -n '/^\[workspace.package\]/,/^\[/{s/^version *= *"\(.*\)"/\1/p}' Cargo.toml)
           echo "version=${base%.*}.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
@@ -84,7 +84,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: build-${{ github.run_number }}
+          TAG: v${{ steps.version.outputs.version }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           notes="Setup Windows compilato dal commit ${GITHUB_SHA::7} di main.
