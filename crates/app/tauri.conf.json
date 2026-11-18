@@ -17,7 +17,8 @@
         "minHeight": 640,
         "center": true,
         "decorations": false,
-        "backgroundColor": "#0f1115"
+        "transparent": true,
+        "shadow": true
       }
     ],
     "security": {

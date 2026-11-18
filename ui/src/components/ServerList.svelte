@@ -8,21 +8,28 @@
   let servers = $state<SavedServer[] | null>(null);
   let status = $state<Record<string, ServerStatus | 'offline' | undefined>>({});
 
+  let { limit = 6, showTitle = true }: { limit?: number; showTitle?: boolean } = $props();
+
   $effect(() => {
-    api.listServers().then((list) => {
-      servers = list;
-      // Si interrogano solo i server mostrati.
-      for (const s of list.slice(0, 6)) {
-        api.pingServer(s.address)
-          .then((st) => (status[s.address] = st))
-          .catch(() => (status[s.address] = 'offline'));
-      }
-    }).catch(() => (servers = []));
+    api.listServers().then((list) => (servers = list)).catch(() => (servers = []));
+  });
+
+  const shown = $derived(servers?.slice(0, limit) ?? []);
+  // Si interrogano solo i server mostrati, una volta ciascuno.
+  const asked = new Set<string>();
+  $effect(() => {
+    for (const s of shown) {
+      if (asked.has(s.address)) continue;
+      asked.add(s.address);
+      api.pingServer(s.address)
+        .then((st) => (status[s.address] = st))
+        .catch(() => (status[s.address] = 'offline'));
+    }
   });
 </script>
 
-<section class="servers" aria-labelledby="servers-title">
-  <h2 id="servers-title" class="section-title">{t('I tuoi server')}</h2>
+<section class="servers" aria-label={t('I tuoi server')}>
+  {#if showTitle}<h2 id="servers-title" class="section-title">{t('I tuoi server')}</h2>{/if}
   {#if servers === null}
     <div class="card skeleton"></div>
   {:else if !servers.length}
@@ -32,7 +39,7 @@
     </div>
   {:else}
     <ul class="list">
-      {#each servers.slice(0, 6) as s, i (s.address)}
+      {#each shown as s, i (s.address)}
         {@const st = status[s.address]}
         <li class="card row enter" style:--i={i} title={s.instances.length ? t('In: {istanze}', { istanze: s.instances.join(', ') }) : undefined}>
           {#if s.icon}<img class="ico" src={s.icon} alt="" />{:else}<span class="ico letter">{initial(s.name)}</span>{/if}

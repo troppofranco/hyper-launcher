@@ -138,3 +138,19 @@ export async function skinHead(skin: string, size = 64): Promise<string> {
   ctx.drawImage(img, 40, 8, 8, 8, 0, 0, size, size);
   return canvas.toDataURL('image/png');
 }
+
+/**
+ * Sfondo: ridotto a `max` px sul lato lungo e ricompresso in JPEG, così
+ * resta leggero anche partendo da una foto enorme.
+ */
+export async function fitImage(file: File, max = 2560): Promise<string> {
+  const img = await loadImage(await readAsDataUrl(file));
+  const scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(img.naturalWidth * scale);
+  canvas.height = Math.round(img.naturalHeight * scale);
+  const ctx = canvas.getContext('2d')!;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', 0.88);
+}

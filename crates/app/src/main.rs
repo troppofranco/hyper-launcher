@@ -4,6 +4,7 @@
 // In release niente finestra di console accanto all'app.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod appearance;
 mod commands;
 mod content;
 mod custom;
@@ -12,6 +13,7 @@ mod state;
 mod views;
 
 use state::AppState;
+use tauri::Manager;
 
 fn main() {
     tracing_subscriber::fmt()
@@ -33,8 +35,18 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(state)
+        // Effetto trasparente della finestra (Mica/Acrylic) scelto nelle Impostazioni.
+        .setup(|app| {
+            let appearance = app.state::<AppState>().config().appearance;
+            appearance::apply_window_effect(app.handle(), &appearance);
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
+            appearance::background,
+            appearance::set_background,
+            appearance::storage_usage,
+            appearance::clear_download_cache,
             commands::list_instances,
             commands::create_instance,
             commands::update_instance,

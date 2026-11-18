@@ -9,7 +9,7 @@
   import Icon from './Icon.svelte';
   import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
-  import { prefersReducedMotion } from 'svelte/motion';
+  import { moving, ms } from '../lib/motion.svelte';
 
   const STEPS = ['lang', 'account', 'look'] as const;
   let step = $state(0);
@@ -20,7 +20,7 @@
   let busy = $state(false);
   let error = $state<string | null>(null);
 
-  const motion = (x: number) => ({ x: prefersReducedMotion.current ? 0 : x, duration: prefersReducedMotion.current ? 0 : 320, easing: cubicOut });
+  const motion = (x: number) => ({ x: moving() ? x : 0, duration: ms(320), easing: cubicOut });
   const validName = $derived(VALID_PLAYER_NAME.test(playerName));
   const hasAccount = $derived(app.accounts.length > 0);
 
@@ -55,8 +55,7 @@
     error = null;
     try {
       const done = { ...$state.snapshot(draft), setupDone: true };
-      await api.saveSettings(done);
-      app.applySettings(done);
+      await app.saveSettings(done);
     } catch (err) {
       error = t(String(err));
       busy = false;

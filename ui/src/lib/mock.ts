@@ -18,7 +18,9 @@ const state: { instances: Instance[]; accounts: Account[]; settings: Settings; m
     { name: 'TroppoFranco', uuid: '069a79f4-44e9-4726-a5be-fca90e38aaf5', kind: 'microsoft', default: true, skin: null },
     { name: 'Dev', uuid: '380df991-f603-344c-a090-369bad2a924a', kind: 'offline', default: false, skin: null },
   ],
-  settings: { defaultMemoryMb: 4096, javaPath: '', msaClientId: '', accent: '#6e5ae6', minimizeOnLaunch: true, showConsole: false, theme: 'dark', language: 'it', setupDone: false, sync: { enabled: false, keybinds: true, video: true, audio: true, controls: true } },
+  settings: { defaultMemoryMb: 4096, javaPath: '', msaClientId: '', accent: '#6e5ae6', minimizeOnLaunch: true, showConsole: false, theme: 'dark', language: 'it', setupDone: false, sync: { enabled: false, keybinds: true, video: true, audio: true, controls: true },
+    appearance: { background: 'solid', effect: 'mica', blur: 16, dim: 40, panelOpacity: 70, uiScale: 100, radius: 'medium', animations: 'full', sidebarSide: 'left', sidebarLabels: false, sidebarInstances: 5, showNews: true, wideContent: false, home: null },
+    downloadConcurrency: 16, defaultJvmArgs: '', gameWidth: null, gameHeight: null, gameFullscreen: false },
   mods: [
     { file: 'sodium-fabric-0.9.2+mc26.3.jar', name: 'sodium-fabric-0.9.2+mc26.3', enabled: true, sizeBytes: 1_200_000, projectId: 'AANobbMI', slug: 'sodium', title: 'Sodium', iconUrl: null, versionNumber: 'mc26.3-0.9.2-fabric', update: 'mc26.3-0.9.3-fabric', source: 'modrinth', website: null },
     { file: 'fabric-api-0.166.2+26.3.jar', name: 'fabric-api-0.166.2+26.3', enabled: true, sizeBytes: 2_400_000, projectId: 'P7dR8mSH', slug: 'fabric-api', title: 'Fabric API', iconUrl: null, versionNumber: '0.166.2+26.3', update: null, source: 'modrinth', website: null },
@@ -60,6 +62,7 @@ function fakeSkin(color: string): string {
 }
 const skins: { id: string; name: string; slim: boolean; image: string }[] = [];
 let selectedSkin: string | null = null;
+let backgroundImage: string | null = null;
 
 function emit(event: string, payload: unknown) {
   handlers.get(event)?.forEach((h) => h(payload));
@@ -88,7 +91,7 @@ function simulateLaunch(name: string) {
 }
 
 const commands: Record<string, (args: Record<string, any>) => unknown> = {
-  app_info: () => ({ version: '0.1.0-dev', dev: true, dataDir: 'C:\\Users\\utente\\AppData\\Roaming\\HyperLauncher', curseforge: true }),
+  app_info: () => ({ version: '0.1.0-dev', dev: true, dataDir: 'C:\\Users\\utente\\AppData\\Roaming\\HyperLauncher', curseforge: true, windowEffect: false }),
   list_instances: () => structuredClone(state.instances),
   create_instance: ({ input }) => {
     const loader = input.loader === 'fabric' ? { kind: 'fabric' as const, name: 'Fabric', version: '0.20.1' } : null;
@@ -132,7 +135,7 @@ const commands: Record<string, (args: Record<string, any>) => unknown> = {
     return structuredClone(state.accounts);
   },
   get_settings: () => structuredClone(state.settings),
-  save_settings: ({ settings }) => { state.settings = settings; },
+  save_settings: ({ settings }) => { state.settings = settings; return settings.appearance.background === 'transparent'; },
   content_search: ({ input }) => {
     const q = String(input.text).toLowerCase();
     const hits = HITS.filter((h) => !q || h.title.toLowerCase().includes(q) || h.description.toLowerCase().includes(q));
@@ -236,6 +239,10 @@ const commands: Record<string, (args: Record<string, any>) => unknown> = {
     { title: 'New on Java Realms: Grinding & Galaxy', date: '2026-09-28', text: '', image: null, url: 'https://www.minecraft.net/' },
   ],
   // Nel browser: aggiungi ?update all'indirizzo per vedere la finestra di aggiornamento.
+  background: () => backgroundImage,
+  set_background: ({ image }) => { backgroundImage = image ?? null; },
+  storage_usage: () => ({ instances: 3_400_000_000, libraries: 420_000_000, assets: 610_000_000, versions: 180_000_000, runtimes: 390_000_000, cache: 95_000_000 }),
+  clear_download_cache: async () => { await new Promise((r) => setTimeout(r, 400)); },
   check_update: () => (location.search.includes('update') ? { current: '0.1.11', available: '0.1.12', url: 'https://github.com/troppofranco/hyper-launcher/releases/tag/build-12' } : { current: null, available: null, url: null }),
   install_update: () => new Promise(() => {}),
   launch_instance: ({ name }) => { simulateLaunch(name); },

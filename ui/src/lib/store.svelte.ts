@@ -2,6 +2,7 @@
 
 import { api, on, type Account, type AppInfo, type BlockedFile, type PackImport, type ContentKind, type Instance, type News, type SearchHit, type SearchSort, type Settings, type UpdateInfo, type Versions } from './api';
 import { setLang, t } from './i18n.svelte';
+import { applyAppearance } from './look';
 
 export type Route =
   | { view: 'home' }
@@ -53,6 +54,8 @@ class AppStore {
   update = $state<UpdateInfo | null>(null);
   /** "Più tardi" sulla finestra di aggiornamento: non la ripropone in questa sessione. */
   updateDismissed = $state(false);
+  /** Home in modalità modifica (widget da spostare e configurare). */
+  homeEditing = $state(false);
   launches = $state<Record<string, LaunchState>>({});
   logs = $state<Record<string, LogLine[]>>({});
   explore = $state<ExploreState>({
@@ -105,6 +108,7 @@ class AppStore {
       this.refreshAccounts(),
     ]);
     this.info = info;
+    this.windowEffect = info.windowEffect;
     this.applySettings(settings);
     // Non bloccanti: la rete potrebbe mancare.
     api.news().then((n) => (this.news = n)).catch(() => (this.news = []));
@@ -133,6 +137,39 @@ class AppStore {
     document.documentElement.style.setProperty('--accent', settings.accent);
     document.documentElement.dataset.theme = settings.theme;
     setLang(settings.language);
+    applyAppearance(settings.appearance, this.windowEffect);
+    void this.loadBackground(settings.appearance.background === 'image');
+  }
+
+  /** Lo sfondo trasparente è attivo (Windows ha applicato Mica/Acrylic). */
+  windowEffect = $state(false);
+  private effectWarned = false;
+
+  /**
+   * Salva le impostazioni (e le applica). Se lo sfondo trasparente non è
+   * disponibile su questo sistema si ripiega sulla tinta unita, con un avviso.
+   */
+  async saveSettings(settings: Settings) {
+    const effect = await api.saveSettings(settings);
+    const wanted = settings.appearance.background === 'transparent';
+    if (wanted && !effect && !this.effectWarned) this.info_(t('Lo sfondo trasparente non è disponibile su questo sistema: resta la tinta unita.'));
+    this.effectWarned = wanted && !effect;
+    this.windowEffect = effect;
+    this.applySettings(settings);
+  }
+
+  /** Immagine di sfondo (data: URL), letta solo quando serve. */
+  backgroundImage = $state<string | null>(null);
+  private backgroundLoaded = false;
+
+  async loadBackground(needed: boolean, force = false) {
+    if (!needed || (this.backgroundLoaded && !force)) return;
+    this.backgroundLoaded = true;
+    try {
+      this.backgroundImage = await api.background();
+    } catch {
+      this.backgroundImage = null;
+    }
   }
 
   async refreshInstances() {

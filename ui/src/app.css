@@ -1,9 +1,9 @@
 :root {
-  --bg: #0f1115;
-  --bg-deep: #0b0d10;
-  --panel: #12151b;
-  --surface: #171a21;
-  --surface-2: #1e222b;
+  --c-bg: #0f1115;
+  --c-bg-deep: #0b0d10;
+  --c-panel: #12151b;
+  --c-surface: #171a21;
+  --c-surface-2: #1e222b;
   --line: #232731;
   --line-strong: #2a2f3a;
   --text: #e8eaf0;
@@ -21,6 +21,7 @@
   --track: #3a3f4c;
   --shadow: rgba(0, 0, 0, .35);
   --radius: 14px;
+  --radius-sm: 10px;
   --font: 'Inter', system-ui, sans-serif;
   --display: 'Space Grotesk', 'Inter', sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, monospace;
@@ -29,11 +30,11 @@
 
 /* Tema chiaro: stessi nomi, valori diversi (Impostazioni → Aspetto). */
 :root[data-theme='light'] {
-  --bg: #f4f5f8;
-  --bg-deep: #e8eaef;
-  --panel: #eceef3;
-  --surface: #ffffff;
-  --surface-2: #eff1f5;
+  --c-bg: #f4f5f8;
+  --c-bg-deep: #e8eaef;
+  --c-panel: #eceef3;
+  --c-surface: #ffffff;
+  --c-surface-2: #eff1f5;
   --line: #e0e3ea;
   --line-strong: #cdd2dc;
   --text: #15171c;
@@ -51,10 +52,36 @@
   color-scheme: light;
 }
 
+
+/* ---------- Personalizzazione (Impostazioni → Aspetto e Layout) ----------
+   Le superfici partono dai colori del tema (--c-*). Con lo sfondo
+   trasparente o un'immagine diventano vetro: semitrasparenti secondo
+   --alpha (opacità dei pannelli), e lo sfondo della finestra sparisce. */
+:root {
+  --alpha: 1;
+  --bg: var(--c-bg);
+  --bg-deep: var(--c-bg-deep);
+  --panel: var(--c-panel);
+  --surface: var(--c-surface);
+  --surface-2: var(--c-surface-2);
+}
+:root[data-background='transparent'], :root[data-background='image'] {
+  --bg: transparent;
+  --bg-deep: color-mix(in srgb, var(--c-bg-deep) calc(var(--alpha) * 85%), transparent);
+  --panel: color-mix(in srgb, var(--c-panel) calc(var(--alpha) * 90%), transparent);
+  --surface: color-mix(in srgb, var(--c-surface) min(calc(var(--alpha) * 100% + 8%), 100%), transparent);
+  --surface-2: color-mix(in srgb, var(--c-surface-2) min(calc(var(--alpha) * 100% + 12%), 100%), transparent);
+}
+:root[data-radius='sharp'] { --radius: 6px; --radius-sm: 5px; }
+:root[data-radius='round'] { --radius: 20px; --radius-sm: 14px; }
+:root[data-wide] .page { max-width: none; }
+/* Scala dell'interfaccia: tutto l'albero ingrandito o rimpicciolito. */
+#app { zoom: var(--ui-scale, 1); }
+
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; }
 body { overflow: hidden; user-select: none; }
-#app { height: 100%; }
+#app { height: calc(100% / var(--ui-scale, 1)); }
 button, input, select, textarea { font-family: inherit; font-size: inherit; color: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: default; opacity: .55; }
@@ -64,7 +91,7 @@ input, select, textarea { user-select: text; }
 :focus-visible { outline: 2px solid var(--accent-line); outline-offset: 2px; }
 
 .btn {
-  height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--line-strong);
+  height: 44px; padding: 0 16px; border-radius: var(--radius-sm); border: 1px solid var(--line-strong);
   background: transparent; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
 }
 .btn:hover:not(:disabled) { background: var(--surface-2); }
@@ -75,7 +102,7 @@ input, select, textarea { user-select: text; }
 
 .field { display: flex; flex-direction: column; gap: 6px; font-weight: 600; font-size: 13px; }
 .input {
-  height: 42px; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--panel);
+  height: 42px; border-radius: var(--radius-sm); border: 1px solid var(--line-strong); background: var(--panel);
   padding: 0 12px; font-weight: 400;
 }
 .input:focus { border-color: var(--accent-line); outline: none; }
@@ -101,7 +128,7 @@ input, select, textarea { user-select: text; }
 .small { font-size: 12px; }
 .page-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
 .page-head p { margin: 6px 0 0; }
-.error-box { margin: 0; color: var(--danger-text); background: color-mix(in srgb, var(--danger) 14%, transparent); padding: 10px 12px; border-radius: 10px; user-select: text; }
+.error-box { margin: 0; color: var(--danger-text); background: color-mix(in srgb, var(--danger) 14%, transparent); padding: 10px 12px; border-radius: var(--radius-sm); user-select: text; }
 input[type='range'] { accent-color: var(--accent); }
 
 /* ---------- Movimento ----------
@@ -131,3 +158,10 @@ button.card:active { transform: translateY(-1px) scale(.99); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+/* Animazioni scelte nelle Impostazioni: spente come "riduci animazioni"
+   del sistema; ridotte = niente cascate né luccichii (le transizioni di
+   pagina durano la metà, vedi lib/motion). */
+:root[data-animations='off'] *, :root[data-animations='off'] *::before, :root[data-animations='off'] *::after {
+  animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important;
+}
+:root[data-animations='reduced'] .enter, :root[data-animations='reduced'] .skeleton { animation: none; }

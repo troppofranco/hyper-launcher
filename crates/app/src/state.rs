@@ -35,6 +35,8 @@ pub struct AppState {
     installer: Mutex<Installer>,
     /// Istanze in installazione o in gioco.
     busy: Mutex<HashSet<String>>,
+    /// Sfondo trasparente attivo (effetto della finestra applicato da Windows).
+    window_effect: std::sync::atomic::AtomicBool,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -53,6 +55,7 @@ impl AppState {
             config: Mutex::new(config),
             installer: Mutex::new(installer),
             busy: Mutex::new(HashSet::new()),
+            window_effect: std::sync::atomic::AtomicBool::new(false),
         })
     }
 
@@ -95,5 +98,15 @@ impl AppState {
 
     pub fn any_busy(&self) -> bool {
         !lock(&self.busy).is_empty()
+    }
+
+    pub fn set_window_effect(&self, active: bool) {
+        self.window_effect
+            .store(active, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn window_effect(&self) -> bool {
+        self.window_effect
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 }

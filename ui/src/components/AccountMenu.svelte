@@ -52,7 +52,9 @@
 
 <style>
   .backdrop { position: fixed; inset: 0; background: transparent; border: 0; z-index: 20; cursor: default; }
-  .menu { position: absolute; left: 60px; top: 0; z-index: 21; width: 310px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 14px; padding: 10px; box-shadow: 0 18px 40px rgba(0,0,0,.45); display: flex; flex-direction: column; gap: 6px; }
+  /* Si apre accanto al pulsante, verso il contenuto (a sinistra se la barra è a destra). */
+  .menu { position: absolute; left: calc(100% + 12px); top: 0; z-index: 21; width: 310px; background: var(--c-surface); border: 1px solid var(--line-strong); border-radius: 14px; padding: 10px; box-shadow: 0 18px 40px rgba(0,0,0,.45); display: flex; flex-direction: column; gap: 6px; }
+  :global(.body.right) .menu { left: auto; right: calc(100% + 12px); }
   .row { display: flex; align-items: center; border-radius: 10px; }
   .row.active { background: var(--surface-2); }
   .pick { flex: 1; display: flex; align-items: center; gap: 12px; padding: 8px; background: transparent; border: 0; text-align: left; border-radius: 10px; }

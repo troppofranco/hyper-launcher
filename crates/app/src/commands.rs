@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use hyper_auth::{Account, AccountStore, AuthError, KeyringStore, MsaClient};
-use hyper_core::{Config, SyncConfig};
+use hyper_core::{AppearanceConfig, Config, SyncConfig};
 use hyper_installer::{LoaderKind, VersionKind, self_update};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -25,6 +25,7 @@ pub fn app_info(state: State<'_, AppState>) -> AppInfo {
         dev: self_update::current_build().is_none(),
         data_dir: state.paths.root().display().to_string(),
         curseforge: state.curseforge.is_some(),
+        window_effect: state.window_effect(),
     }
 }
 
@@ -276,6 +277,13 @@ pub struct SettingsView {
     pub language: String,
     pub setup_done: bool,
     pub sync: SyncConfig,
+    pub appearance: AppearanceConfig,
+    pub download_concurrency: usize,
+    /// Argomenti JVM predefiniti, separati da spazi.
+    pub default_jvm_args: String,
+    pub game_width: Option<u32>,
+    pub game_height: Option<u32>,
+    pub game_fullscreen: bool,
 }
 
 #[tauri::command]
@@ -295,14 +303,28 @@ pub fn get_settings(state: State<'_, AppState>) -> SettingsView {
         language: c.language,
         setup_done: c.setup_done,
         sync: c.sync,
+        appearance: c.appearance,
+        download_concurrency: c.download_concurrency,
+        default_jvm_args: c.default_jvm_args.join(" "),
+        game_width: c.game_width,
+        game_height: c.game_height,
+        game_fullscreen: c.game_fullscreen,
     }
 }
 
-/// Salva le impostazioni; i controlli (memoria minima, colore) stanno in
-/// `Config::validate`.
+/// Salva le impostazioni e applica l'effetto della finestra; restituisce se
+/// lo sfondo trasparente è attivo. I controlli (memoria minima, colore,
+/// aspetto) stanno in `Config::validate`.
 #[tauri::command]
-pub fn save_settings(state: State<'_, AppState>, settings: SettingsView) -> CmdResult<()> {
+pub fn save_settings(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    settings: SettingsView,
+) -> CmdResult<bool> {
     let non_empty = |s: String| Some(s.trim().to_owned()).filter(|s| !s.is_empty());
+    if !Config::CONCURRENCY.contains(&settings.download_concurrency) {
+        return Err("Download in parallelo: scegli un numero tra 1 e 64.".into());
+    }
     let config = Config {
         default_memory_mb: settings.default_memory_mb,
         java_path: non_empty(settings.java_path).map(PathBuf::from),
@@ -314,9 +336,20 @@ pub fn save_settings(state: State<'_, AppState>, settings: SettingsView) -> CmdR
         language: settings.language,
         setup_done: settings.setup_done,
         sync: settings.sync,
-        ..state.config()
+        appearance: settings.appearance,
+        download_concurrency: settings.download_concurrency,
+        default_jvm_args: settings
+            .default_jvm_args
+            .split_whitespace()
+            .map(str::to_owned)
+            .collect(),
+        game_width: settings.game_width,
+        game_height: settings.game_height,
+        game_fullscreen: settings.game_fullscreen,
     };
-    state.save_config(config).cmd()
+    let appearance = config.appearance.clone();
+    state.save_config(config).cmd()?;
+    Ok(crate::appearance::apply_window_effect(&app, &appearance))
 }
 
 // ---------- Statistiche ----------

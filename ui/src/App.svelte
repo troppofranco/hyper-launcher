@@ -16,12 +16,14 @@
   import ProjectPage from './views/ProjectPage.svelte';
   import Customize from './views/Customize.svelte';
   import Onboarding from './components/Onboarding.svelte';
+  import Backdrop from './components/Backdrop.svelte';
   import { t } from './lib/i18n.svelte';
   import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
-  import { prefersReducedMotion } from 'svelte/motion';
+  import { ms } from './lib/motion.svelte';
 
   let ready = $state(false);
+  const look = $derived(app.settings?.appearance);
   const routeKey = $derived(
     app.route.view === 'instance' ? `instance:${app.route.name}` : app.route.view === 'project' ? `project:${app.route.id}` : app.route.view,
   );
@@ -40,12 +42,13 @@
 
 <svelte:window oncontextmenu={noContextMenu} />
 
+<Backdrop />
 <div class="shell">
   <Titlebar />
   {#if ready && app.settings && !app.settings.setupDone}
     <Onboarding />
   {:else}
-  <div class="body">
+  <div class="body" class:right={look?.sidebarSide === 'right'}>
     <Sidebar />
     <main class="content scroll">
       {#if failed}
@@ -55,7 +58,7 @@
       {:else}
         <!-- Ogni cambio di pagina entra con una breve dissolvenza dal basso. -->
         {#key routeKey}
-          <div class="view" in:fly={{ y: 14, duration: prefersReducedMotion.current ? 0 : 280, easing: cubicOut }}>
+          <div class="view" in:fly={{ y: 14, duration: ms(280), easing: cubicOut }}>
             {#if app.route.view === 'home'}
               <Home />
             {:else if app.route.view === 'library'}
@@ -75,7 +78,7 @@
         {/key}
       {/if}
     </main>
-    {#if app.route.view === 'home' || app.route.view === 'library' || app.route.view === 'instance'}<NewsPanel />{/if}
+    {#if look?.showNews !== false && (app.route.view === 'home' || app.route.view === 'library' || app.route.view === 'instance')}<NewsPanel />{/if}
   </div>
   {/if}
 </div>
@@ -87,8 +90,10 @@
 <Toast />
 
 <style>
-  .shell { height: 100%; display: flex; flex-direction: column; }
+  .shell { position: relative; z-index: 1; height: 100%; display: flex; flex-direction: column; }
   .body { flex: 1; display: flex; min-height: 0; }
+  /* Barra laterale a destra: ultima della riga (dopo notizie e contenuti). */
+  .body.right > :global(.sidebar) { order: 2; border-right: 0; border-left: 1px solid var(--line); }
   .content { flex: 1; min-width: 0; }
   .view { min-height: 100%; }
   .fatal { color: var(--danger-text); user-select: text; }

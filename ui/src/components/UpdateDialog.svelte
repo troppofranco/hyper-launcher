@@ -7,9 +7,9 @@
   import Icon from './Icon.svelte';
   import { fade, scale } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
-  import { prefersReducedMotion } from 'svelte/motion';
+  import { ms } from '../lib/motion.svelte';
 
-  const d = (ms: number) => (prefersReducedMotion.current ? 0 : ms);
+  const d = (n: number) => ms(n);
   let installing = $state(false);
 
   // Solo dopo la configurazione iniziale e se non è stato rimandato.

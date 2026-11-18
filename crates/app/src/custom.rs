@@ -19,7 +19,7 @@ pub fn data_url(mime: &str, bytes: &[u8]) -> String {
 }
 
 /// Base64 inviato dall'interfaccia (con o senza prefisso `data:`).
-fn decode(data: &str) -> CmdResult<Vec<u8>> {
+pub fn decode(data: &str) -> CmdResult<Vec<u8>> {
     let raw = data.split_once(";base64,").map_or(data, |(_, b)| b);
     STANDARD
         .decode(raw.trim())

@@ -12,7 +12,7 @@ use hyper_core::{Config, SyncConfig};
 use hyper_installer::{InstalledVersion, Installer, InstallerError, StageProgressFn};
 
 use crate::console::{GameOutput, Log4jParser};
-use crate::launch::{LaunchCommand, LaunchOptions, build_command, prepare_natives};
+use crate::launch::{GameWindow, LaunchCommand, LaunchOptions, build_command, prepare_natives};
 use crate::{Instance, InstanceError, Result};
 
 /// Scelta di Java, in ordine di precedenza: `override` (es. `--java`),
@@ -158,6 +158,11 @@ pub async fn prepare_launch(
             memory_mb,
             session,
             paths: installer.paths(),
+            default_jvm_args: &config.default_jvm_args,
+            window: GameWindow {
+                size: config.game_width.zip(config.game_height),
+                fullscreen: config.game_fullscreen,
+            },
         },
     );
     Ok(PreparedLaunch {

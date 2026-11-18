@@ -62,7 +62,7 @@ export interface ExportResult { path: string; linked: number; bundled: number }
 export interface SearchInput { text: string; kind: ContentKind; instance: string | null; gameVersion: string | null; loaders: string[]; categories: string[]; sort: SearchSort; offset: number }
 export interface World { name: string; lastPlayed: number | null }
 export interface News { title: string; date: string; text: string; image: string | null; url: string }
-export interface AppInfo { version: string; dev: boolean; dataDir: string; curseforge: boolean }
+export interface AppInfo { version: string; dev: boolean; dataDir: string; curseforge: boolean; windowEffect: boolean }
 export interface UpdateInfo { current: string | null; available: string | null; url: string | null }
 export interface Settings {
   defaultMemoryMb: number;
@@ -75,7 +75,34 @@ export interface Settings {
   language: 'it' | 'en';
   setupDone: boolean;
   sync: SyncSettings;
+  appearance: Appearance;
+  downloadConcurrency: number;
+  /** Argomenti JVM predefiniti, separati da spazi. */
+  defaultJvmArgs: string;
+  gameWidth: number | null;
+  gameHeight: number | null;
+  gameFullscreen: boolean;
 }
+export type WidgetSize = 'small' | 'medium' | 'large';
+export interface WidgetConfig { kind: string; size: WidgetSize; options: Record<string, number> }
+export interface Appearance {
+  background: 'solid' | 'transparent' | 'image';
+  effect: 'mica' | 'acrylic';
+  blur: number;
+  dim: number;
+  panelOpacity: number;
+  uiScale: number;
+  radius: 'sharp' | 'medium' | 'round';
+  animations: 'full' | 'reduced' | 'off';
+  sidebarSide: 'left' | 'right';
+  sidebarLabels: boolean;
+  sidebarInstances: number;
+  showNews: boolean;
+  wideContent: boolean;
+  /** null = Home predefinita (diversa da una Home svuotata). */
+  home: WidgetConfig[] | null;
+}
+export interface StorageUsage { instances: number; libraries: number; assets: number; versions: number; runtimes: number; cache: number }
 export interface SyncSettings { enabled: boolean; keybinds: boolean; video: boolean; audio: boolean; controls: boolean }
 export interface PlaySession { instance: string; start: number; end: number }
 export interface InstanceSettings { memoryMb: number | null; javaPath: string | null; jvmArgs: string; syncSettings: boolean }
@@ -120,7 +147,12 @@ export const api = {
   setDefaultAccount: (name: string) => call<Account[]>('set_default_account', { name }),
   removeAccount: (name: string) => call<Account[]>('remove_account', { name }),
   getSettings: () => call<Settings>('get_settings'),
-  saveSettings: (settings: Settings) => call<void>('save_settings', { settings }),
+  /** Salva; restituisce se lo sfondo trasparente è attivo. */
+  saveSettings: (settings: Settings) => call<boolean>('save_settings', { settings }),
+  background: () => call<string | null>('background'),
+  setBackground: (image: string | null) => call<void>('set_background', { image }),
+  storageUsage: () => call<StorageUsage>('storage_usage'),
+  clearDownloadCache: () => call<void>('clear_download_cache'),
   search: (input: SearchInput) => call<SearchResults>('content_search', { input }),
   project: (id: string) => call<Project>('content_project', { id }),
   plan: (instance: string, project: string, kind: ContentKind, world: string | null) =>

@@ -136,6 +136,8 @@ pub struct AppInfo {
     /// Compilazione locale: niente aggiornamenti automatici.
     pub dev: bool,
     pub data_dir: String,
+    /// Sfondo trasparente attivo (Mica/Acrylic applicato).
+    pub window_effect: bool,
     /// CurseForge disponibile (questa versione ha la chiave API).
     pub curseforge: bool,
 }

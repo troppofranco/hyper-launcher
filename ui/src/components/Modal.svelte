@@ -4,8 +4,8 @@
   import Icon from './Icon.svelte';
   import { fade, scale } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
-  import { prefersReducedMotion } from 'svelte/motion';
-  const d = (ms: number) => (prefersReducedMotion.current ? 0 : ms);
+  import { ms } from '../lib/motion.svelte';
+  const d = (n: number) => ms(n);
 
   let { title, onclose, children, width = 560 }: { title: string; onclose: () => void; children: Snippet; width?: number } = $props();
   const id = `modal-${Math.random().toString(36).slice(2)}`;

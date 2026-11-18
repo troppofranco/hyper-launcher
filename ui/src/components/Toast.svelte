@@ -4,7 +4,7 @@
   import Icon from './Icon.svelte';
   import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
-  import { prefersReducedMotion } from 'svelte/motion';
+  import { ms } from '../lib/motion.svelte';
 
   // Le notifiche informative spariscono da sole; gli errori restano finché
   // non vengono chiusi, così si possono leggere (e copiare) con calma.
@@ -16,7 +16,7 @@
 </script>
 
 {#if app.toast}
-  <div class="toast" transition:fly={{ y: 24, duration: prefersReducedMotion.current ? 0 : 260, easing: cubicOut }} class:error={app.toast.kind === 'error'} role={app.toast.kind === 'error' ? 'alert' : 'status'}>
+  <div class="toast" transition:fly={{ y: 24, duration: ms(260), easing: cubicOut }} class:error={app.toast.kind === 'error'} role={app.toast.kind === 'error' ? 'alert' : 'status'}>
     <span class="text">{app.toast.text}</span>
     <button aria-label={t('Chiudi')} onclick={() => (app.toast = null)}><Icon name="close" size={16} /></button>
   </div>

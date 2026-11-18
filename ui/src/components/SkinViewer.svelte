@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { SkinViewer } from 'skinview3d';
-  import { prefersReducedMotion } from 'svelte/motion';
+  import { moving } from '../lib/motion.svelte';
   import { t } from '../lib/i18n.svelte';
 
   // Anteprima 3D della skin: si gira trascinando, cammina sul posto. La
@@ -20,9 +20,9 @@
       v.fov = 50;
       v.camera.position.set(-18, 8, 42);
       v.controls.enableZoom = false;
-      v.autoRotate = !prefersReducedMotion.current;
+      v.autoRotate = moving();
       v.autoRotateSpeed = 0.6;
-      if (!prefersReducedMotion.current) {
+      if (moving()) {
         v.animation = new WalkingAnimation();
         v.animation.speed = 0.6;
       }

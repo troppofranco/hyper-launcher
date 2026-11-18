@@ -19,6 +19,36 @@ pub struct LaunchOptions<'a> {
     pub memory_mb: u32,
     pub session: &'a Session,
     pub paths: &'a Paths,
+    /// Argomenti JVM per le istanze che non ne hanno di propri.
+    pub default_jvm_args: &'a [String],
+    pub window: GameWindow,
+}
+
+/// Finestra di gioco all'avvio (impostazione globale del launcher).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct GameWindow {
+    /// Larghezza × altezza; `None` = quella decisa dal gioco.
+    pub size: Option<(u32, u32)>,
+    pub fullscreen: bool,
+}
+
+impl GameWindow {
+    /// Argomenti di gioco corrispondenti (`--width`, `--height`, `--fullscreen`).
+    fn args(self) -> Vec<String> {
+        let mut args = Vec::new();
+        if let Some((w, h)) = self.size {
+            args.extend([
+                "--width".into(),
+                w.to_string(),
+                "--height".into(),
+                h.to_string(),
+            ]);
+        }
+        if self.fullscreen {
+            args.push("--fullscreen".into());
+        }
+        args
+    }
 }
 
 #[derive(Clone)]
@@ -180,7 +210,13 @@ pub fn build_command(
     };
 
     let mut args = vec![format!("-Xmx{}M", opts.memory_mb)];
-    args.extend(instance.config.jvm_args.iter().cloned());
+    // Gli argomenti dell'istanza, se ci sono, sostituiscono quelli predefiniti.
+    let custom = if instance.config.jvm_args.is_empty() {
+        opts.default_jvm_args
+    } else {
+        &instance.config.jvm_args
+    };
+    args.extend(custom.iter().cloned());
     args.extend(jvm_args);
     if let Some(logging) = &installed.logging {
         let path = HashMap::from([("path", logging.path.display().to_string())]);
@@ -188,6 +224,7 @@ pub fn build_command(
     }
     args.push(version.main_class.clone());
     args.extend(game_args);
+    args.extend(opts.window.args());
 
     let secrets: Vec<String> = opts
         .session
@@ -281,6 +318,8 @@ mod tests {
             memory_mb: 2048,
             session: &session,
             paths: &paths,
+            default_jvm_args: &[],
+            window: GameWindow::default(),
         };
         build_command(&instance(), &installed(json), opts).args
     }
@@ -301,11 +340,47 @@ mod tests {
                 memory_mb: 2048,
                 session: &session,
                 paths: &paths,
+                default_jvm_args: &[],
+                window: GameWindow::default(),
             },
         );
         assert!(command.args.iter().any(|a| a == "eyJ.real.token"));
         let shown = format!("{:?} {:?}", command.redacted_args(), command);
         assert!(!shown.contains("eyJ.real.token"), "{shown}");
+    }
+
+    #[test]
+    fn window_and_default_jvm_args() {
+        let session = offline_session();
+        let paths = Paths::new("root");
+        // Senza argomenti propri l'istanza usa quelli predefiniti.
+        let mut plain = instance();
+        plain.config.jvm_args.clear();
+        let defaults = vec!["-XX:+UseG1GC".to_owned()];
+        let command = build_command(
+            &plain,
+            &installed(
+                r#"{"id": "1.21.4", "type": "release", "mainClass": "M",
+                    "arguments": {"game": [], "jvm": []}}"#,
+            ),
+            LaunchOptions {
+                java: Path::new("java"),
+                memory_mb: 2048,
+                session: &session,
+                paths: &paths,
+                default_jvm_args: &defaults,
+                window: GameWindow {
+                    size: Some((1600, 900)),
+                    fullscreen: true,
+                },
+            },
+        );
+        let args = command.args.join(" ");
+        assert!(args.contains("-Xmx2048M -XX:+UseG1GC"), "{args}");
+        assert!(
+            args.ends_with("M --width 1600 --height 900 --fullscreen"),
+            "{args}"
+        );
     }
 
     #[test]
