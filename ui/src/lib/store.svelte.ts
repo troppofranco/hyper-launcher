@@ -1,6 +1,6 @@
 // Stato globale dell'interfaccia (rune di Svelte 5).
 
-import { api, on, type Account, type AppInfo, type ContentKind, type Instance, type News, type SearchHit, type SearchSort, type Settings, type UpdateInfo, type Versions } from './api';
+import { api, on, type Account, type AppInfo, type BlockedFile, type PackImport, type ContentKind, type Instance, type News, type SearchHit, type SearchSort, type Settings, type UpdateInfo, type Versions } from './api';
 import { setLang, t } from './i18n.svelte';
 
 export type Route =
@@ -35,6 +35,8 @@ export interface ExploreState {
   gameVersion: string | null;
   loaders: string[];
   layout: 'grid' | 'list';
+  /** Catalogo: Modrinth (con ricerca) o CurseForge (in evidenza e per ID). */
+  source: 'modrinth' | 'curseforge';
 }
 
 const MAX_LOG_LINES = 2500;
@@ -53,10 +55,12 @@ class AppStore {
   logs = $state<Record<string, LogLine[]>>({});
   explore = $state<ExploreState>({
     text: '', kind: 'mod', instance: null, category: null, sort: 'relevance',
-    gameVersion: null, loaders: [], layout: 'grid',
+    gameVersion: null, loaders: [], layout: 'grid', source: 'modrinth',
   });
   /** Download di contenuti in corso, per istanza (`''` = import di un modpack). */
   contentProgress = $state<Record<string, { done: number; total: number }>>({});
+  /** File di un modpack CurseForge da scaricare a mano (apre il dialogo). */
+  blockedFiles = $state<BlockedFile[] | null>(null);
   /** Modpack in evidenza nella Home (caricati una volta per sessione). */
   featuredPacks = $state<SearchHit[] | null>(null);
   /** Cresce a ogni partita finita: chi mostra statistiche si ricarica. */
@@ -201,16 +205,45 @@ class AppStore {
     }
   }
 
-  /** Importa un .mrpack scelto dall'utente e apre la nuova istanza. */
+  /** Dopo un import: apre la nuova istanza e segnala i file da prendere a mano. */
+  private async afterPackImport(result: PackImport, message: string) {
+    await this.refreshInstances();
+    this.info_(t(message, { nome: result.instance.name }));
+    this.go({ view: 'instance', name: result.instance.name });
+    if (result.blocked.length) this.blockedFiles = result.blocked;
+  }
+
+  /** Importa un modpack (.mrpack o .zip di CurseForge) scelto dall'utente. */
   async importPack() {
     try {
-      const inst = await this.withContentProgress('', () => api.packImport());
-      if (!inst) return;
-      await this.refreshInstances();
-      this.info_(t('Modpack importato: {nome}.', { nome: inst.name }));
-      this.go({ view: 'instance', name: inst.name });
+      const result = await this.withContentProgress('', () => api.packImport());
+      if (result) await this.afterPackImport(result, 'Modpack importato: {nome}.');
     } catch (e) {
       this.error(e);
+    }
+  }
+
+  /** Installa un modpack CurseForge come nuova istanza; `false` se fallisce. */
+  async installCfPack(id: number): Promise<boolean> {
+    try {
+      const result = await this.withContentProgress('', () => api.cfPackInstall(id));
+      await this.afterPackImport(result, 'Modpack installato: nuova istanza “{nome}”.');
+      return true;
+    } catch (e) {
+      this.error(e);
+      return false;
+    }
+  }
+
+  /** Installa un progetto CurseForge (con le dipendenze); `false` se fallisce. */
+  async installCf(instance: string, id: number, title: string): Promise<boolean> {
+    try {
+      const n = await this.withContentProgress(instance, () => api.cfInstall(instance, id, null));
+      this.info_(n > 1 ? t('{titolo} installato in {istanza}, con {n} dipendenze.', { titolo: title, istanza: instance, n: n - 1 }) : t('{titolo} installato in {istanza}.', { titolo: title, istanza: instance }));
+      return true;
+    } catch (e) {
+      this.error(e);
+      return false;
     }
   }
 

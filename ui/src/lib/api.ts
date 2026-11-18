@@ -25,7 +25,7 @@ export interface Skin { id: string; name: string; slim: boolean; image: string }
 export interface Skins { skins: Skin[]; selected: string | null; offline: boolean }
 export interface SavedServer { name: string; address: string; icon: string | null; instances: string[] }
 export interface ServerStatus { online: number; max: number; version: string; motd: string; latencyMs: number }
-export interface Account { name: string; uuid: string; kind: 'offline' | 'microsoft'; default: boolean }
+export interface Account { name: string; uuid: string; kind: 'offline' | 'microsoft'; default: boolean; skin: string | null }
 export interface VersionInfo { id: string; kind: string; releaseTime: string }
 export interface Versions { latestRelease: string; latestSnapshot: string; versions: VersionInfo[] }
 export type ContentKind = 'mod' | 'resourcepack' | 'shader' | 'datapack' | 'modpack';
@@ -44,12 +44,25 @@ export interface InstalledContent {
   file: string; name: string; enabled: boolean; sizeBytes: number;
   projectId: string | null; slug: string | null; title: string | null; iconUrl: string | null;
   versionNumber: string | null; update: string | null;
+  /** Dove è stato riconosciuto il file. */
+  source: 'modrinth' | 'curseforge' | null;
+  /** Pagina del progetto (solo CurseForge). */
+  website: string | null;
 }
+/** Un progetto CurseForge. */
+export interface CfProject {
+  id: number; name: string; summary: string; author: string; iconUrl: string | null;
+  downloads: number; kind: ContentKind | null; website: string; updated: string;
+}
+export interface CfFeatured { featured: CfProject[]; popular: CfProject[]; recent: CfProject[] }
+/** File di un modpack da scaricare a mano dal sito CurseForge. */
+export interface BlockedFile { name: string; fileName: string; url: string }
+export interface PackImport { instance: Instance; blocked: BlockedFile[] }
 export interface ExportResult { path: string; linked: number; bundled: number }
 export interface SearchInput { text: string; kind: ContentKind; instance: string | null; gameVersion: string | null; loaders: string[]; categories: string[]; sort: SearchSort; offset: number }
 export interface World { name: string; lastPlayed: number | null }
 export interface News { title: string; date: string; text: string; image: string | null; url: string }
-export interface AppInfo { version: string; build: number | null; dataDir: string }
+export interface AppInfo { version: string; build: number | null; dataDir: string; curseforge: boolean }
 export interface UpdateInfo { current: number | null; available: number | null }
 export interface Settings {
   defaultMemoryMb: number;
@@ -121,7 +134,11 @@ export const api = {
   deleteContent: (instance: string, dir: ContentDirName, file: string) => call<void>('delete_content', { instance, dir, file }),
   updateContent: (instance: string, dir: ContentDirName, files: string[]) => call<number>('content_update', { instance, dir, files }),
   packInstall: (project: string) => call<Instance>('pack_install', { project }),
-  packImport: () => call<Instance | null>('pack_import'),
+  packImport: () => call<PackImport | null>('pack_import'),
+  cfFeatured: (kind: ContentKind, instance: string | null) => call<CfFeatured>('cf_featured', { kind, instance }),
+  cfProject: (id: number) => call<CfProject>('cf_project', { id }),
+  cfInstall: (instance: string, id: number, world: string | null) => call<number>('cf_install', { instance, id, world }),
+  cfPackInstall: (id: number) => call<PackImport>('cf_pack_install', { id }),
   packExport: (instance: string) => call<ExportResult | null>('pack_export', { instance }),
   listWorlds: (name: string) => call<World[]>('list_worlds', { name }),
   setInstanceIcon: (name: string, png: string | null) => call<Instance>('set_instance_icon', { name, png }),

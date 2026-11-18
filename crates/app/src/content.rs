@@ -6,8 +6,9 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use hyper_content::curseforge::{CfMod, CurseForge, class_id, loader_type};
 use hyper_content::library::{installed, update};
-use hyper_content::{ContentKind, SearchQuery, SearchSort, install, mrpack};
+use hyper_content::{ContentKind, SearchQuery, SearchSort, cfinstall, cfpack, install, mrpack};
 use hyper_installer::Progress;
 use hyper_instances::ContentDir;
 use serde::{Deserialize, Serialize};
@@ -15,7 +16,10 @@ use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::state::{AppState, CmdResult, OrCmd};
-use crate::views::{ContentView, ExportView, InstanceView, PlanView, ProjectView, SearchView};
+use crate::views::{
+    CfFeaturedView, CfProjectView, ContentView, ExportView, InstanceView, PackImportView, PlanView,
+    ProjectView, SearchView,
+};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -144,7 +148,8 @@ pub async fn content_installed(
     check_updates: bool,
 ) -> CmdResult<Vec<ContentView>> {
     let target = state.instances().load(&instance).cmd()?;
-    match installed(&state.modrinth, &target, dir, check_updates).await {
+    let cf = state.curseforge.as_ref();
+    match installed(&state.modrinth, cf, &target, dir, check_updates).await {
         Ok(items) => Ok(items.into_iter().map(ContentView::from).collect()),
         Err(e) => {
             tracing::warn!(error = %e, "Modrinth unavailable, showing plain files");
@@ -201,6 +206,7 @@ pub async fn content_update(
     let report = progress_emitter(&app, &instance);
     update(
         &state.modrinth,
+        state.curseforge.as_ref(),
         state.installer().downloader(),
         &target,
         dir,
@@ -232,24 +238,26 @@ pub async fn pack_install(
     Ok(InstanceView::new(&instance))
 }
 
-/// Chiede un file `.mrpack` e lo importa; `None` se l'utente annulla.
+/// Chiede un modpack (`.mrpack` di Modrinth o `.zip` di CurseForge) e lo
+/// importa; `None` se l'utente annulla.
 #[tauri::command]
 pub async fn pack_import(
     app: AppHandle,
     state: State<'_, AppState>,
-) -> CmdResult<Option<InstanceView>> {
+) -> CmdResult<Option<PackImportView>> {
     let Some(file) = app
         .dialog()
         .file()
         .set_title("Importa un modpack")
-        .add_filter("Modpack Modrinth", &["mrpack"])
+        .add_filter("Modpack", &["mrpack", "zip"])
         .blocking_pick_file()
     else {
         return Ok(None);
     };
     let path = file.into_path().cmd()?;
     let report = progress_emitter(&app, "");
-    let instance = mrpack::import(
+    let import = cfpack::import_any(
+        state.curseforge.as_ref(),
         &state.instances(),
         state.installer().downloader(),
         &path,
@@ -257,7 +265,7 @@ pub async fn pack_import(
     )
     .await
     .cmd()?;
-    Ok(Some(InstanceView::new(&instance)))
+    Ok(Some(PackImportView::from(import)))
 }
 
 /// Chiede dove salvare ed esporta l'istanza in `.mrpack`; `None` se
@@ -291,4 +299,97 @@ pub async fn pack_export(
         linked: summary.linked,
         bundled: summary.bundled,
     }))
+}
+
+// ---------- CurseForge ----------
+
+fn curseforge(state: &AppState) -> CmdResult<&CurseForge> {
+    state
+        .curseforge
+        .as_ref()
+        .ok_or_else(|| "CurseForge non è disponibile in questa versione.".to_owned())
+}
+
+/// Progetti in evidenza, popolari e aggiornati di recente di un tipo. Con
+/// un'istanza restano solo quelli che hanno un file per la sua versione
+/// (e, per le mod, per il suo loader).
+#[tauri::command]
+pub async fn cf_featured(
+    state: State<'_, AppState>,
+    kind: ContentKind,
+    instance: Option<String>,
+) -> CmdResult<CfFeaturedView> {
+    let lists = curseforge(&state)?.featured().await.cmd()?;
+    let target = match instance {
+        Some(name) => Some(state.instances().load(&name).cmd()?.config),
+        None => None,
+    };
+    let class = class_id(kind);
+    let fits = |m: &&CfMod| {
+        m.class_id == Some(class)
+            && target.as_ref().is_none_or(|c| {
+                let loader = match kind {
+                    ContentKind::Mod => c.loader.as_ref().map(|l| loader_type(l.kind)),
+                    _ => None,
+                };
+                m.latest_file(&c.version, loader, false).is_some()
+            })
+    };
+    let pick = |list: &[CfMod]| list.iter().filter(fits).map(CfProjectView::from).collect();
+    Ok(CfFeaturedView {
+        featured: pick(&lists.featured),
+        popular: pick(&lists.popular),
+        recent: pick(&lists.recently_updated),
+    })
+}
+
+/// Un progetto per Project ID (il numero mostrato su curseforge.com).
+#[tauri::command]
+pub async fn cf_project(state: State<'_, AppState>, id: u32) -> CmdResult<CfProjectView> {
+    let project = curseforge(&state)?.project(id).await.cmd()?;
+    Ok(CfProjectView::from(&project))
+}
+
+/// Installa un progetto CurseForge e le sue dipendenze; restituisce quanti
+/// file.
+#[tauri::command]
+pub async fn cf_install(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    instance: String,
+    id: u32,
+    world: Option<String>,
+) -> CmdResult<usize> {
+    let cf = curseforge(&state)?;
+    let target = state.instances().load(&instance).cmd()?;
+    let plan = cfinstall::plan(cf, &target, id, world.as_deref())
+        .await
+        .cmd()?;
+    let report = progress_emitter(&app, &instance);
+    plan.execute(&target, state.installer().downloader(), Some(&report))
+        .await
+        .cmd()?;
+    Ok(plan.files.len())
+}
+
+/// Installa l'ultima versione di un modpack CurseForge come nuova istanza.
+#[tauri::command]
+pub async fn cf_pack_install(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: u32,
+) -> CmdResult<PackImportView> {
+    let cf = curseforge(&state)?;
+    let report = progress_emitter(&app, "");
+    let import = cfpack::install_from_curseforge(
+        cf,
+        &state.instances(),
+        state.installer().downloader(),
+        &state.paths.cache_dir(),
+        id,
+        Some(&report),
+    )
+    .await
+    .cmd()?;
+    Ok(PackImportView::from(import))
 }

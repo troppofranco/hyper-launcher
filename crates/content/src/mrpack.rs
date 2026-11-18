@@ -58,7 +58,7 @@ pub struct PackEnv {
     pub server: String,
 }
 
-fn zip_error(path: &Path) -> impl Fn(zip::result::ZipError) -> ContentError + '_ {
+pub(crate) fn zip_error(path: &Path) -> impl Fn(zip::result::ZipError) -> ContentError + '_ {
     move |source| ContentError::Zip {
         path: path.to_owned(),
         source,
@@ -151,7 +151,7 @@ fn validated_downloads(index: &PackIndex) -> Result<Vec<PackDownload>> {
 }
 
 /// Nome di cartella valido ricavato dal nome del pack.
-fn folder_name(name: &str) -> String {
+pub(crate) fn folder_name(name: &str) -> String {
     let cleaned: String = name
         .chars()
         .map(|c| {
@@ -274,17 +274,28 @@ pub async fn install_from_modrinth(
 }
 
 /// Usa l'icona del progetto Modrinth come immagine della nuova istanza.
-/// Facoltativa: se manca, non si scarica o è in un formato non gestito
-/// (es. SVG), l'istanza resta senza immagine. Non ha un hash da
-/// verificare: viene solo mostrata, dopo il controllo del formato.
 async fn project_icon(api: &Modrinth, downloader: &Downloader, project: &str, instance: &Instance) {
-    let Ok(info) = api.project(project).await else {
+    if let Some(url) = api.project(project).await.ok().and_then(|p| p.icon_url) {
+        apply_icon(downloader, &url, instance).await;
+    }
+}
+
+/// Host da cui si accettano le icone dei progetti (CDN di Modrinth e
+/// CurseForge).
+const ICON_HOSTS: &[&str] = &["cdn.modrinth.com", "media.forgecdn.net"];
+
+/// Scarica un'icona e la usa come immagine dell'istanza. Facoltativa: se
+/// non si scarica o è in un formato non gestito (es. SVG), l'istanza resta
+/// senza immagine. Non ha un hash da verificare: viene solo mostrata, dopo
+/// il controllo del formato.
+pub(crate) async fn apply_icon(downloader: &Downloader, url: &str, instance: &Instance) {
+    let trusted = reqwest::Url::parse(url).is_ok_and(|u| {
+        u.scheme() == "https" && u.host_str().is_some_and(|h| ICON_HOSTS.contains(&h))
+    });
+    if !trusted {
         return;
-    };
-    let Some(url) = info.icon_url.filter(|u| is_trusted_download(u)) else {
-        return;
-    };
-    let result = match downloader.get_bytes(&url).await {
+    }
+    let result = match downloader.get_bytes(url).await {
         Ok(bytes) => instance.set_icon(Some(&bytes)).map_err(|e| e.to_string()),
         Err(e) => Err(e.to_string()),
     };
@@ -309,7 +320,7 @@ pub async fn export(api: &Modrinth, instance: &Instance, out: &Path) -> Result<E
     let mut files = Vec::new();
     let mut bundled: Vec<(String, PathBuf)> = Vec::new();
     for dir in ContentDir::ALL {
-        for item in installed(api, instance, dir, false).await? {
+        for item in installed(api, None, instance, dir, false).await? {
             if !item.file.enabled {
                 continue;
             }

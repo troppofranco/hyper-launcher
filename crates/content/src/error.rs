@@ -16,7 +16,7 @@ pub enum ContentError {
     #[error(transparent)]
     Instance(Box<InstanceError>),
 
-    #[error("Modrinth request to {url} failed: {source}")]
+    #[error("request to {url} failed: {source}")]
     Http {
         url: String,
         #[source]
@@ -59,6 +59,14 @@ pub enum ContentError {
 
     #[error("download URL not allowed: {0}")]
     UntrustedUrl(String),
+
+    /// L'autore non permette il download dai launcher: va scaricato a mano
+    /// dalla pagina CurseForge.
+    #[error("{name} can only be downloaded from the CurseForge website")]
+    DistributionBlocked { name: String, mod_id: u32 },
+
+    #[error("CurseForge is not available in this build")]
+    CurseForgeUnavailable,
 
     #[error("invalid modpack: {0}")]
     InvalidPack(String),

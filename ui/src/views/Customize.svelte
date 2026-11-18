@@ -44,6 +44,8 @@
     try {
       data = await op();
       thumbs(data.skins);
+      // L'immagine del profilo è la testa della skin scelta.
+      void app.refreshAccounts();
     } catch (e) {
       app.error(e);
     } finally {

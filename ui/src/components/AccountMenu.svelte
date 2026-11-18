@@ -2,7 +2,7 @@
   import { t } from '../lib/i18n.svelte';
   import { api } from '../lib/api';
   import { app } from '../lib/store.svelte';
-  import { initial } from '../lib/format';
+  import Avatar from './Avatar.svelte';
   import Icon from './Icon.svelte';
 
   let { onclose }: { onclose: () => void } = $props();
@@ -36,7 +36,7 @@
   {#each app.accounts as a (a.uuid)}
     <div class="row" class:active={a.default}>
       <button class="pick" role="menuitem" onclick={() => choose(a.name)}>
-        <span class="av">{initial(a.name)}</span>
+        <Avatar account={a} size={40} />
         <span class="who">
           <span class="name">{a.name}</span>
           <span class="kind">{a.kind === 'microsoft' ? t('Account Microsoft') : t('Account offline')}{a.default ? ' · ' + t('attivo') : ''}</span>
@@ -57,7 +57,6 @@
   .row.active { background: var(--surface-2); }
   .pick { flex: 1; display: flex; align-items: center; gap: 12px; padding: 8px; background: transparent; border: 0; text-align: left; border-radius: 10px; }
   .pick:hover { background: var(--surface-2); }
-  .av { width: 40px; height: 40px; border-radius: 10px; background: var(--accent-soft); display: flex; align-items: center; justify-content: center; font-weight: 700; flex: 0 0 auto; }
   .who { display: flex; flex-direction: column; min-width: 0; }
   .name { font-weight: 600; }
   .kind { font-size: 12px; color: var(--muted); }

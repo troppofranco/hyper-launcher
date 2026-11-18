@@ -6,11 +6,11 @@ use std::path::{Path, PathBuf};
 
 use hyper_core::{CoreError, safe_component};
 use hyper_installer::download::ProgressFn;
-use hyper_installer::{DownloadTask, Downloader};
+use hyper_installer::{DownloadTask, Downloader, Sha1Hex};
 use hyper_instances::Instance;
 
 use crate::library::installed_mod_projects;
-use crate::modrinth::{DependencyType, VersionFile, is_trusted_download};
+use crate::modrinth::{DependencyType, is_trusted_download};
 use crate::{ContentError, ContentKind, Modrinth, Result, Version};
 
 /// Iris: serve per caricare gli shader su Fabric.
@@ -22,8 +22,15 @@ const MAX_FILES: usize = 64;
 #[derive(Debug, Clone)]
 pub struct PlannedFile {
     pub kind: ContentKind,
-    pub version: Version,
-    pub file: VersionFile,
+    /// Progetto: id Modrinth, oppure `cf:<id>` per CurseForge.
+    pub project_id: String,
+    /// Nome della versione (es. "Sodium 0.6.0").
+    pub name: String,
+    pub version_number: String,
+    pub filename: String,
+    pub url: String,
+    pub sha1: Sha1Hex,
+    pub size: u64,
     pub dest: PathBuf,
     /// File della stessa mod già installato, da togliere dopo il download.
     pub replaces: Option<PathBuf>,
@@ -37,7 +44,7 @@ pub struct InstallPlan {
 
 impl InstallPlan {
     pub fn total_bytes(&self) -> u64 {
-        self.files.iter().map(|f| f.file.size).sum()
+        self.files.iter().map(|f| f.size).sum()
     }
 
     /// Scarica e verifica tutti i file; solo dopo toglie le vecchie versioni
@@ -53,14 +60,7 @@ impl InstallPlan {
         let tasks = self
             .files
             .iter()
-            .map(|f| {
-                DownloadTask::new(
-                    &f.file.url,
-                    f.dest.clone(),
-                    f.file.hashes.sha1.clone(),
-                    Some(f.file.size),
-                )
-            })
+            .map(|f| DownloadTask::new(&f.url, f.dest.clone(), f.sha1.clone(), Some(f.size)))
             .collect();
         let replaced = self
             .files
@@ -100,7 +100,11 @@ pub(crate) async fn download_replacing(
 }
 
 /// Cartella in cui installare un contenuto di questo tipo.
-fn target_dir(instance: &Instance, kind: ContentKind, world: Option<&str>) -> Result<PathBuf> {
+pub(crate) fn target_dir(
+    instance: &Instance,
+    kind: ContentKind,
+    world: Option<&str>,
+) -> Result<PathBuf> {
     if let Some(dir) = kind.content_dir() {
         return Ok(instance.content_dir(dir));
     }
@@ -256,8 +260,13 @@ impl Planner<'_> {
         self.plan.files.push(PlannedFile {
             replaces: self.installed.get(&version.project_id).cloned(),
             kind,
-            version,
-            file,
+            project_id: version.project_id,
+            name: version.name,
+            version_number: version.version_number,
+            filename: file.filename,
+            url: file.url,
+            sha1: file.hashes.sha1,
+            size: file.size,
             dest,
         });
         Ok(())
@@ -318,11 +327,7 @@ mod tests {
         let plan = plan(&api, &instance, "iris", ContentKind::Mod, None)
             .await
             .unwrap();
-        let names: Vec<_> = plan
-            .files
-            .iter()
-            .map(|f| f.file.filename.as_str())
-            .collect();
+        let names: Vec<_> = plan.files.iter().map(|f| f.filename.as_str()).collect();
         assert_eq!(names, ["iris.jar", "sodium.jar"]);
         assert_eq!(plan.files[1].dest, instance.mods_dir().join("sodium.jar"));
         assert_eq!(plan.total_bytes(), 6);

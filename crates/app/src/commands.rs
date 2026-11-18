@@ -24,6 +24,7 @@ pub fn app_info(state: State<'_, AppState>) -> AppInfo {
         version: env!("CARGO_PKG_VERSION"),
         build: self_update::current_build(),
         data_dir: state.paths.root().display().to_string(),
+        curseforge: state.curseforge.is_some(),
     }
 }
 
@@ -173,10 +174,17 @@ fn edit_accounts(
     let path = state.paths.accounts_file();
     let mut store = AccountStore::load(&path).cmd()?;
     edit(&mut store, &path, &KeyringStore::default())?;
+    let skins = hyper_instances::skins::SkinLibrary::new(&state.paths);
     Ok(store
         .accounts()
         .iter()
-        .map(|a| AccountView::new(a, store.is_default(a)))
+        .map(|a| {
+            let skin = skins
+                .selected(&a.uuid().to_string())
+                .and_then(|s| skins.png(&s.id).ok())
+                .map(|png| crate::custom::data_url("image/png", &png));
+            AccountView::new(a, store.is_default(a), skin)
+        })
         .collect())
 }
 

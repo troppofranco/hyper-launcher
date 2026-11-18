@@ -31,6 +31,12 @@
   }));
   const progress = $derived(updating ? app.contentProgress[instance] : undefined);
 
+  /** Modrinth: dettaglio nel launcher; CurseForge: pagina sul sito. */
+  function open(item: InstalledContent) {
+    if (item.source === 'curseforge') { if (item.website) void api.openUrl(item.website); }
+    else if (item.projectId) app.openProject(item.projectId, kind, instance);
+  }
+
   async function load() {
     try {
       items = await api.installed(instance, dir, true);
@@ -97,11 +103,11 @@
   {/if}
   {#each shown as item, i (item.file)}
     <div class="row enter" style:--i={i} class:off={!item.enabled}>
-      <button class="who" disabled={!item.projectId} onclick={() => item.projectId && app.openProject(item.projectId, kind, instance)}>
+      <button class="who" disabled={!item.projectId} onclick={() => open(item)}>
         <ProjectIcon url={item.iconUrl} name={item.title ?? item.name} size={40} />
         <span class="meta">
-          <span class="name">{item.title ?? item.name}</span>
-          <span class="muted small">{item.file} · {megabytes(item.sizeBytes)}{item.projectId ? '' : t(' · non trovato su Modrinth')}</span>
+          <span class="name">{item.title ?? item.name}{#if item.source === 'curseforge'}<span class="src">CurseForge</span>{/if}</span>
+          <span class="muted small">{item.file} · {megabytes(item.sizeBytes)}{item.projectId ? '' : t(' · non riconosciuto su Modrinth né CurseForge')}</span>
         </span>
       </button>
       <span class="ver">
@@ -140,6 +146,7 @@
   .who:disabled { cursor: default; opacity: 1; }
   .meta { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .src { margin-left: 8px; font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 5px; vertical-align: 2px; background: color-mix(in srgb, #f16436 18%, transparent); color: #f16436; }
   .meta .small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ver { flex: 0 0 auto; max-width: 220px; font-family: var(--mono); font-size: 12px; color: var(--text-2); display: flex; flex-direction: column; align-items: flex-end; overflow: hidden; }
   .arrow { color: var(--accent-line); }

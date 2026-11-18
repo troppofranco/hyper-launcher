@@ -7,6 +7,7 @@
   import Icon from '../components/Icon.svelte';
   import ProjectIcon from '../components/ProjectIcon.svelte';
   import ProgressBar from '../components/ProgressBar.svelte';
+  import CurseForgeBrowse from '../components/CurseForgeBrowse.svelte';
 
   let hits = $state<SearchHit[]>([]);
   let total = $state(0);
@@ -19,6 +20,8 @@
 
   const ex = app.explore;
   const isPack = $derived(ex.kind === 'modpack');
+  // CurseForge solo se la build ha la chiave; altrimenti sempre Modrinth.
+  const onCf = $derived(ex.source === 'curseforge' && !!app.info?.curseforge);
   // Con un'istanza scelta versione e loader sono i suoi; i filtri del
   // pannello valgono solo senza istanza (o per i modpack).
   const target = $derived(isPack ? null : (app.instances.find((i) => i.name === ex.instance) ?? null));
@@ -61,6 +64,7 @@
     // Dell'istanza contano solo nome, versione e loader: l'oggetto cambia a
     // ogni aggiornamento dell'elenco istanze e ripartirebbe la ricerca.
     void [ex.text.trim(), ex.kind, targetKey, ex.category, ex.sort, ex.gameVersion, ex.loaders.join()];
+    if (onCf) return;
     const timer = setTimeout(() => load(0), 300);
     return () => clearTimeout(timer);
   });
@@ -104,9 +108,17 @@
     <div class="page-head">
       <div>
         <h1 class="page-title">{t('Esplora')}</h1>
-        <p class="muted">{t('Modpack, mod e risorse da Modrinth, installati con le loro dipendenze.')}</p>
+        <p class="muted">{onCf ? t('Modpack, mod e risorse da CurseForge, installati con le loro dipendenze.') : t('Modpack, mod e risorse da Modrinth, installati con le loro dipendenze.')}</p>
       </div>
-      <button class="btn" onclick={() => app.importPack()} disabled={'' in app.contentProgress}><Icon name="upload" size={16} /> {t('Importa .mrpack')}</button>
+      <span class="head-actions">
+        {#if app.info?.curseforge}
+          <div class="seg source" role="group" aria-label={t('Catalogo')}>
+            <button class:on={!onCf} aria-pressed={!onCf} onclick={() => (ex.source = 'modrinth')}>Modrinth</button>
+            <button class:on={onCf} aria-pressed={onCf} onclick={() => (ex.source = 'curseforge')}>CurseForge</button>
+          </div>
+        {/if}
+        <button class="btn" onclick={() => app.importPack()} disabled={'' in app.contentProgress}><Icon name="upload" size={16} /> {t('Importa modpack')}</button>
+      </span>
     </div>
 
     {#if !isPack}
@@ -128,6 +140,9 @@
       </div>
     {/if}
 
+    {#if onCf}
+      <CurseForgeBrowse kind={ex.kind} {target} />
+    {:else}
     <label class="search">
       <Icon name="search" size={18} />
       <span class="visually-hidden">{t('Cerca su Modrinth')}</span>
@@ -199,6 +214,7 @@
     {:else if hits.length < total}
       <button class="btn more" onclick={() => load(hits.length)}>{t('Mostra altri')}</button>
     {/if}
+    {/if}
   </div>
 
   <aside class="filters" aria-label={t('Filtri')}>
@@ -213,6 +229,7 @@
       </div>
     </section>
 
+    {#if !onCf}
     <section>
       <h3 class="label">{t('Versione di gioco')}</h3>
       {#if target}
@@ -250,6 +267,7 @@
         </div>
       </section>
     {/if}
+    {/if}
   </aside>
 </div>
 
@@ -269,6 +287,8 @@
   .tools { display: flex; gap: 8px; align-items: center; }
   .sort { height: 38px; }
   .seg { display: flex; border: 1px solid var(--line-strong); border-radius: 10px; overflow: hidden; }
+  .head-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .seg.source button { width: auto; padding: 0 14px; height: 42px; font-weight: 600; }
   .seg button { width: 40px; height: 36px; border: 0; background: transparent; color: var(--muted); display: flex; align-items: center; justify-content: center; }
   .seg button.on { background: var(--accent-soft); color: var(--text); }
   .results { display: flex; flex-direction: column; gap: 10px; }

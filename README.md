@@ -1,90 +1,123 @@
 # Hyper Launcher
 
-Launcher di Minecraft moderno e performante, scritto in Rust.
+[![Latest release](https://img.shields.io/github/v/release/troppofranco/hyper-launcher?label=release)](https://github.com/troppofranco/hyper-launcher/releases/latest)
+![Platform](https://img.shields.io/badge/platform-Windows-0078d4)
+![Built with Rust](https://img.shields.io/badge/built%20with-Rust-b7410e)
 
-> **Stato:** app grafica (Tauri + Svelte) e CLI (`hyper`) che installano e
-> avviano Minecraft vanilla o con **Fabric, Quilt, NeoForge o Forge**, con account offline o
-> Microsoft, istanze isolate, aggiornamenti automatici e il catalogo
-> **Modrinth** (mod, resource pack, shader, data pack, modpack `.mrpack`).
-> Tasti e impostazioni grafiche si possono sincronizzare tra le istanze.
-> CurseForge arriverà in una fase successiva (vedi [CLAUDE.md](CLAUDE.md)).
+A fast, modern Minecraft: Java Edition launcher written in Rust, with a desktop app built on Tauri 2 and Svelte 5.
 
-## Installazione (Windows)
+Hyper Launcher keeps every installation isolated, while sharing libraries and assets between them. It installs mod loaders and content in one click and keeps your settings in sync across instances.
 
-Scarica `HyperLauncher-Setup.exe` dall'[ultima release](../../releases/latest)
-e avvialo. Installa per l'utente corrente (nessun permesso di amministratore)
-l'app **Hyper Launcher** (menu Start e, se vuoi, desktop) e la CLI `hyper`,
-che finisce nel PATH. Il setup non è firmato: se Windows SmartScreen lo
-blocca, scegli "Ulteriori informazioni" → "Esegui comunque".
+## Features
 
-**Aggiornamenti automatici:** ogni push su `main` pubblica una nuova release
-`build-<N>`. L'app mostra "Aggiorna e riavvia" quando ce n'è una più nuova;
-la CLI controlla a ogni avvio e si aggiorna da sola (`hyper update` forza il
-controllo, `HYPER_NO_UPDATE=1` lo disattiva). Il setup scaricato viene sempre
-verificato con SHA1.
+- **Isolated instances.** Each instance has its own worlds, mods and settings, plus an optional custom image. Libraries, assets and Java runtimes are downloaded once and shared.
+- **Every major loader.** Vanilla, Fabric, Quilt, NeoForge and Forge, with the matching Java runtime downloaded automatically from Mojang.
+- **Built-in content browser.** Search the Modrinth catalogue for mods, resource packs, shaders, data packs and modpacks:
+  - one-click install that resolves required dependencies;
+  - recognition of files you added by hand;
+  - per-file and bulk updates.
+- **Modpacks.** Install from the catalogue, or import and export `.mrpack` files. A modpack downloaded from Modrinth uses its project icon as the instance image.
+- **Settings sync.** Optionally share keybinds, video, audio and control settings (`options.txt`) between instances. Only the values you change during a session are written back.
+- **Customisation.**
+  - Skin library with a live 3D preview. For offline accounts, the skin is applied in game through a generated resource pack.
+  - Your skin's head is used as your profile picture.
+  - Light and dark themes, accent colours, English and Italian interface.
+- **Home dashboard.** Quick launch, featured modpacks, your saved servers with live player counts, a weekly playtime chart and Minecraft news.
+- **Accounts.** Offline accounts and Microsoft sign-in (see [Microsoft accounts](#microsoft-accounts)). Tokens are stored only in the system keyring.
+- **Automatic updates.** The app offers "Update and restart" as soon as a new build is published, and the CLI updates itself.
+- **Command-line interface.** Everything the app does is also available from the `hyper` CLI.
 
-## Uso
+## Installation (Windows)
 
-L'app: Home con "Gioca subito", modpack in evidenza, i server salvati (con
-giocatori online) e il tempo di gioco della settimana; **Personalizzazione** con
-anteprima 3D delle skin (per gli account offline la skin si vede in gioco
-tramite un resource pack generato dal launcher); immagine personalizzata per
-ogni istanza; Libreria, **Esplora**
-(catalogo Modrinth con installazione delle dipendenze in un clic), pagina
-dell'istanza (Gioca, mod, resource pack e shader con aggiornamenti, mondi,
-console, impostazioni, esporta `.mrpack`), account offline o Microsoft dal
-menu in alto a sinistra, Impostazioni (con la **sincronizzazione** di tasti,
-video, audio e controlli tra le istanze).
+1. Download `HyperLauncher-Setup.exe` from the [latest release](https://github.com/troppofranco/hyper-launcher/releases/latest).
+2. Run it. It installs for the current user only, so no administrator rights are needed. It adds:
+   - the **Hyper Launcher** app (Start menu, and optionally the desktop);
+   - the `hyper` CLI, added to your `PATH`.
 
-NeoForge e Forge si installano eseguendo il loro installer ufficiale
-(scaricato dal Maven ufficiale e verificato con SHA1) al primo avvio
-dell'istanza; Fabric e Quilt usano i profili delle loro API.
+The installer is not code-signed yet. If Windows SmartScreen blocks it, choose **More info → Run anyway**.
 
-La CLI:
+Java does not need to be installed: the launcher downloads the official runtime each Minecraft version requires. Data is stored in `%APPDATA%\HyperLauncher`; set `HYPER_LAUNCHER_HOME` to use another folder.
+
+On the first launch, a short setup asks for your language, your first account, and your theme and accent colour.
+
+## Command-line usage
 
 ```text
-hyper versions                                         # versioni disponibili
-hyper account add-offline <nome>                       # account offline
-hyper account add-microsoft                            # account Microsoft (vedi sotto)
-hyper instance create <nome> --version latest          # istanza vanilla
-hyper instance create <nome> --version 26.3 --loader fabric   # o quilt, neoforge, forge
-hyper launch <nome>                                    # installa (se serve) e avvia
-hyper launch <nome> --dry-run                          # mostra il comando senza avviare
-hyper content search sodium --instance <nome>         # cerca su Modrinth (alias: hyper mod)
-hyper content add <nome> iris --kind mod               # installa con le dipendenze
-hyper content update <nome>                            # aggiorna le mod
-hyper pack install fabulously-optimized                # modpack Modrinth → nuova istanza
-hyper pack import file.mrpack / export <nome> file.mrpack
+hyper versions                                        # list Minecraft versions
+hyper account add-offline <name>                      # add an offline account
+hyper account add-microsoft                           # add a Microsoft account
+hyper instance create <name> --version latest         # vanilla instance
+hyper instance create <name> --version 26.3 --loader fabric   # or quilt, neoforge, forge
+hyper launch <name>                                   # install if needed, then launch
+hyper launch <name> --dry-run                         # print the launch command only
+hyper content search sodium --instance <name>         # search Modrinth (alias: hyper mod)
+hyper content add <name> iris --kind mod              # install with dependencies
+hyper content update <name>                           # update installed mods
+hyper pack install fabulously-optimized               # Modrinth modpack → new instance
+hyper pack import pack.mrpack                         # import a modpack file
+hyper pack export <name> pack.mrpack                  # export an instance
+hyper update                                          # check for launcher updates now
 ```
 
-Java non serve: il launcher scarica il runtime ufficiale Mojang adatto alla
-versione. I dati stanno in `%APPDATA%\HyperLauncher` (sovrascrivibile con
-`HYPER_LAUNCHER_HOME`).
+Set `HYPER_NO_UPDATE=1` to turn off the CLI's automatic update check.
 
-**Account Microsoft:** serve il client ID di un'app Azure ("Personal Microsoft
-accounts only", "Allow public client flows" = Yes) approvata da Mojang per la
-Minecraft API, da impostare nelle Impostazioni dell'app, come `msa_client_id`
-in `config.toml` o in `HYPER_MSA_CLIENT_ID`. I token restano solo nel keyring
-di sistema.
+## Updates
 
-## Sviluppo
+Every commit to `main` publishes a numbered release (`build-<N>`) with the installer and its SHA-1 checksum. The app and the CLI check for newer builds at startup. The downloaded installer is always verified against its checksum before it runs.
+
+## Microsoft accounts
+
+Microsoft sign-in requires the client ID of an Azure application with these settings:
+
+- supported account types: *Personal Microsoft accounts only*;
+- *Allow public client flows* set to **Yes**;
+- approved by Mojang for the Minecraft services API.
+
+Set the client ID in **Settings → Microsoft account**, as `msa_client_id` in `config.toml`, or in the `HYPER_MSA_CLIENT_ID` environment variable. Until then, use offline accounts.
+
+## Security
+
+- Every downloaded file is verified against its published hash before use.
+- Archive extraction (natives, modpacks, overrides) is validated against path traversal.
+- Modpack downloads are restricted to the hosts allowed by the Modrinth specification.
+- Account tokens never touch the disk or the logs: they live in the operating system's keyring.
+- Forge and NeoForge are installed with their official installers, downloaded from the official Maven repositories and verified before running.
+
+## Building from source
+
+Requirements: a recent stable Rust toolchain, Node.js and npm, plus the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for Windows.
 
 ```text
-npm --prefix ui ci && npm --prefix ui run build   # interfaccia (incorporata nell'app)
-cargo test --workspace
-cargo clippy --workspace --all-targets -- -D warnings
-cargo run -p hyper-app                            # app grafica
+npm --prefix ui ci && npm --prefix ui run build   # build the interface (embedded in the app)
+cargo run -p hyper-app                            # desktop app
 cargo run -p hyper-cli -- versions                # CLI
-npm --prefix ui run dev                           # UI nel browser con backend simulato
+npm --prefix ui run dev                           # interface in the browser, with a mock backend
 ```
 
-| Crate / cartella | Ruolo |
+Before submitting changes:
+
+```text
+cargo fmt --all
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+npm --prefix ui run check
+```
+
+### Project layout
+
+| Crate / folder | Responsibility |
 |---|---|
-| `hyper-core` | percorsi, configurazione, filesystem sicuro (anti path traversal) |
-| `hyper-auth` | account offline e Microsoft, token nel keyring |
-| `hyper-installer` | version manifest, Fabric/Quilt/NeoForge/Forge, download paralleli verificati SHA1, asset, native, runtime Java, aggiornamenti |
-| `hyper-instances` | istanze isolate, mod/resource pack/shader e mondi, comando di avvio, pipeline di lancio, console |
-| `hyper-content` | catalogo Modrinth: ricerca, installazione con dipendenze, aggiornamenti, modpack `.mrpack` |
-| `hyper-sync` | sincronizzazione di `options.txt` tra le istanze (tasti, video, audio, controlli) |
-| `hyper-cli` | binario `hyper` |
-| `hyper-app` + `ui/` | app grafica `hyper-launcher` (Tauri 2 + Svelte 5) |
+| `hyper-core` | Paths, configuration, safe filesystem helpers (path traversal protection) |
+| `hyper-auth` | Offline and Microsoft accounts, keyring-backed token storage |
+| `hyper-installer` | Version manifest, Fabric/Quilt/NeoForge/Forge, verified parallel downloads, assets, natives, Java runtimes, self-update |
+| `hyper-instances` | Isolated instances, content folders and worlds, launch command and pipeline, console, skins, saved servers |
+| `hyper-content` | Modrinth catalogue: search, dependency-aware installs, updates, `.mrpack` import and export |
+| `hyper-sync` | `options.txt` synchronisation between instances |
+| `hyper-cli` | The `hyper` command-line binary |
+| `hyper-app` + `ui/` | The `hyper-launcher` desktop app (Tauri 2 + Svelte 5) |
+
+## License
+
+Licensed under either of MIT or Apache-2.0, at your option.
+
+Hyper Launcher is not an official Minecraft product and is not approved by or associated with Mojang or Microsoft.

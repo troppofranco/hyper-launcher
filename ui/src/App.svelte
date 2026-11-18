@@ -7,6 +7,7 @@
   import Toast from './components/Toast.svelte';
   import NewInstanceDialog from './components/NewInstanceDialog.svelte';
   import AddAccountDialog from './components/AddAccountDialog.svelte';
+  import BlockedFilesDialog from './components/BlockedFilesDialog.svelte';
   import Home from './views/Home.svelte';
   import Library from './views/Library.svelte';
   import InstancePage from './views/InstancePage.svelte';
@@ -82,6 +83,7 @@
 
 {#if app.newInstanceOpen}<NewInstanceDialog />{/if}
 {#if app.addAccountOpen}<AddAccountDialog />{/if}
+{#if app.blockedFiles?.length}<BlockedFilesDialog />{/if}
 <Toast />
 
 <style>

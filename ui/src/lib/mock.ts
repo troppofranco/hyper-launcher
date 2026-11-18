@@ -15,15 +15,16 @@ const state: { instances: Instance[]; accounts: Account[]; settings: Settings; m
     { name: 'Snapshot', version: '26.4-snapshot-8', loader: null, created: now() - 3600, lastPlayed: null, playtimeSecs: 0, memoryMb: null, javaPath: null, jvmArgs: [], syncSettings: true, icon: null },
   ],
   accounts: [
-    { name: 'TroppoFranco', uuid: '069a79f4-44e9-4726-a5be-fca90e38aaf5', kind: 'microsoft', default: true },
-    { name: 'Dev', uuid: '380df991-f603-344c-a090-369bad2a924a', kind: 'offline', default: false },
+    { name: 'TroppoFranco', uuid: '069a79f4-44e9-4726-a5be-fca90e38aaf5', kind: 'microsoft', default: true, skin: null },
+    { name: 'Dev', uuid: '380df991-f603-344c-a090-369bad2a924a', kind: 'offline', default: false, skin: null },
   ],
   settings: { defaultMemoryMb: 4096, javaPath: '', msaClientId: '', accent: '#6e5ae6', minimizeOnLaunch: true, showConsole: false, theme: 'dark', language: 'it', setupDone: false, sync: { enabled: false, keybinds: true, video: true, audio: true, controls: true } },
   mods: [
-    { file: 'sodium-fabric-0.9.2+mc26.3.jar', name: 'sodium-fabric-0.9.2+mc26.3', enabled: true, sizeBytes: 1_200_000, projectId: 'AANobbMI', slug: 'sodium', title: 'Sodium', iconUrl: null, versionNumber: 'mc26.3-0.9.2-fabric', update: 'mc26.3-0.9.3-fabric' },
-    { file: 'fabric-api-0.166.2+26.3.jar', name: 'fabric-api-0.166.2+26.3', enabled: true, sizeBytes: 2_400_000, projectId: 'P7dR8mSH', slug: 'fabric-api', title: 'Fabric API', iconUrl: null, versionNumber: '0.166.2+26.3', update: null },
-    { file: 'modmenu-21.0.1.jar.disabled', name: 'modmenu-21.0.1', enabled: false, sizeBytes: 800_000, projectId: 'mOgUt4GM', slug: 'modmenu', title: 'Mod Menu', iconUrl: null, versionNumber: '21.0.1', update: null },
-    { file: 'mia-mod-test.jar', name: 'mia-mod-test', enabled: true, sizeBytes: 40_000, projectId: null, slug: null, title: null, iconUrl: null, versionNumber: null, update: null },
+    { file: 'sodium-fabric-0.9.2+mc26.3.jar', name: 'sodium-fabric-0.9.2+mc26.3', enabled: true, sizeBytes: 1_200_000, projectId: 'AANobbMI', slug: 'sodium', title: 'Sodium', iconUrl: null, versionNumber: 'mc26.3-0.9.2-fabric', update: 'mc26.3-0.9.3-fabric', source: 'modrinth', website: null },
+    { file: 'fabric-api-0.166.2+26.3.jar', name: 'fabric-api-0.166.2+26.3', enabled: true, sizeBytes: 2_400_000, projectId: 'P7dR8mSH', slug: 'fabric-api', title: 'Fabric API', iconUrl: null, versionNumber: '0.166.2+26.3', update: null, source: 'modrinth', website: null },
+    { file: 'modmenu-21.0.1.jar.disabled', name: 'modmenu-21.0.1', enabled: false, sizeBytes: 800_000, projectId: 'mOgUt4GM', slug: 'modmenu', title: 'Mod Menu', iconUrl: null, versionNumber: '21.0.1', update: null, source: 'modrinth', website: null },
+    { file: 'villagesbeyond-1.0.0.jar', name: 'villagesbeyond-1.0.0', enabled: true, sizeBytes: 300_000, projectId: 'cf:1782682', slug: null, title: 'Villages Beyond', iconUrl: null, versionNumber: 'Villages Beyond 1.0.0', update: 'Villages Beyond 1.1.0', source: 'curseforge', website: 'https://www.curseforge.com/minecraft/mc-mods/villages-beyond' },
+    { file: 'mia-mod-test.jar', name: 'mia-mod-test', enabled: true, sizeBytes: 40_000, projectId: null, slug: null, title: null, iconUrl: null, versionNumber: null, update: null, source: null, website: null },
   ],
 };
 
@@ -87,7 +88,7 @@ function simulateLaunch(name: string) {
 }
 
 const commands: Record<string, (args: Record<string, any>) => unknown> = {
-  app_info: () => ({ version: '0.1.0', build: null, dataDir: 'C:\\Users\\utente\\AppData\\Roaming\\HyperLauncher' }),
+  app_info: () => ({ version: '0.1.0', build: null, dataDir: 'C:\\Users\\utente\\AppData\\Roaming\\HyperLauncher', curseforge: true }),
   list_instances: () => structuredClone(state.instances),
   create_instance: ({ input }) => {
     const loader = input.loader === 'fabric' ? { kind: 'fabric' as const, name: 'Fabric', version: '0.20.1' } : null;
@@ -111,10 +112,11 @@ const commands: Record<string, (args: Record<string, any>) => unknown> = {
     ],
   }),
   loader_versions: ({ game }) => (game.includes('snapshot') ? [] : ['0.20.1', '0.20.0']),
-  list_accounts: () => structuredClone(state.accounts),
+  // La skin scelta vale per l'account attivo (nel mock ce n'è una sola).
+  list_accounts: () => state.accounts.map((a) => ({ ...a, skin: a.default ? (skins.find((s) => s.id === selectedSkin)?.image ?? null) : null })),
   add_offline_account: ({ name }) => {
     state.accounts.forEach((a) => (a.default = false));
-    state.accounts.push({ name, uuid: crypto.randomUUID(), kind: 'offline', default: true });
+    state.accounts.push({ name, uuid: crypto.randomUUID(), kind: 'offline', default: true, skin: null });
     return structuredClone(state.accounts);
   },
   add_microsoft_account: () => {
@@ -167,6 +169,19 @@ const commands: Record<string, (args: Record<string, any>) => unknown> = {
     return structuredClone(inst);
   },
   pack_import: () => null,
+  cf_featured: ({ kind }) => {
+    const p = (id: number, name: string, summary: string, k: string) => ({ id, name, summary, author: 'Autore', iconUrl: null, downloads: 1_000_000 + id, kind: k, website: `https://www.curseforge.com/minecraft/mc-mods/${id}`, updated: '2026-11-10T00:00:00Z' });
+    const all = [p(348521, 'Cloth Config API', 'Configuration library for mods.', 'mod'), p(1782682, 'Villages Beyond', 'New villages and villager expansion.', 'mod'), p(396246, 'Fabulously Optimized', 'Optimization modpack.', 'modpack'), p(1360926, 'Cobblemon SMP', 'Pokémon adventure.', 'modpack')].filter((x) => x.kind === kind);
+    return { featured: all.slice(0, 1), popular: all, recent: all.slice(1) };
+  },
+  cf_project: ({ id }) => ({ id, name: `Progetto ${id}`, summary: 'Progetto trovato per ID.', author: 'Autore', iconUrl: null, downloads: 1234, kind: 'mod', website: `https://www.curseforge.com/projects/${id}`, updated: '2026-11-10T00:00:00Z' }),
+  cf_install: async ({ instance }) => { await simulateDownload(instance, 2); return 2; },
+  cf_pack_install: async () => {
+    await simulateDownload('', 4);
+    const inst = { name: 'Pack CurseForge', version: '26.2', loader: { kind: 'fabric' as const, name: 'Fabric', version: '0.20.1' }, created: now(), lastPlayed: null, playtimeSecs: 0, memoryMb: null, javaPath: null, jvmArgs: [], syncSettings: true, icon: null };
+    state.instances.push(inst);
+    return { instance: structuredClone(inst), blocked: [{ name: 'Entity Culling', fileName: 'entityculling-fabric-1.11.3.jar', url: 'https://www.curseforge.com/minecraft/mc-mods/entityculling' }] };
+  },
   pack_export: ({ instance }) => ({ path: `C:\\Users\\utente\\Documents\\${instance}.mrpack`, linked: 3, bundled: 1 }),
   set_instance_icon: ({ name, png }) => {
     const inst = state.instances.find((i) => i.name === name)!;

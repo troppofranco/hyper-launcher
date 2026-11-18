@@ -4,7 +4,7 @@
   import Icon from './Icon.svelte';
   import InstanceIcon from './InstanceIcon.svelte';
   import AccountMenu from './AccountMenu.svelte';
-  import { initial } from '../lib/format';
+  import Avatar from './Avatar.svelte';
 
   let menuOpen = $state(false);
   const shortcuts = $derived(app.recent.slice(0, 5));
@@ -14,7 +14,7 @@
 <nav class="sidebar" aria-label={t('Navigazione principale')}>
   <div class="account-wrap">
     <button class="avatar" aria-label={app.activeAccount ? t('Account: {nome}', { nome: app.activeAccount.name }) : t('Aggiungi un account')} aria-expanded={menuOpen} onclick={() => (menuOpen = !menuOpen)}>
-      {app.activeAccount ? initial(app.activeAccount.name) : '+'}
+      {#if app.activeAccount}<Avatar account={app.activeAccount} size={40} />{:else}+{/if}
     </button>
     {#if menuOpen}<AccountMenu onclose={() => (menuOpen = false)} />{/if}
   </div>
@@ -44,7 +44,7 @@
 <style>
   .sidebar { flex: 0 0 76px; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px 0; background: var(--panel); border-right: 1px solid var(--line); }
   .account-wrap { position: relative; }
-  .avatar { width: 48px; height: 48px; border-radius: 14px; border: 2px solid var(--accent); background: var(--accent-soft); font-weight: 700; font-size: 17px; font-family: var(--display); }
+  .avatar { width: 48px; height: 48px; border-radius: 14px; border: 2px solid var(--accent); background: var(--accent-soft); font-weight: 700; font-size: 17px; font-family: var(--display); padding: 0; display: flex; align-items: center; justify-content: center; }
   .sep { width: 32px; height: 1px; background: var(--line); margin: 6px 0; }
   .nav { transition: background .2s ease, color .2s ease, transform .15s ease; }
   .nav:active { transform: scale(.92); }

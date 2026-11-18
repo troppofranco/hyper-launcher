@@ -6,8 +6,9 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::Subcommand;
+use hyper_content::cfpack::{self, PackImport};
 use hyper_content::library::{installed, update};
-use hyper_content::{ContentKind, Modrinth, SearchQuery, install, mrpack};
+use hyper_content::{ContentKind, CurseForge, Modrinth, SearchQuery, cfinstall, install, mrpack};
 use hyper_installer::Progress;
 use hyper_instances::ContentDir;
 
@@ -25,7 +26,8 @@ pub enum ContentCommand {
         #[arg(long)]
         instance: Option<String>,
     },
-    /// Installa un progetto (id o slug) e le sue dipendenze in un'istanza.
+    /// Installa un progetto (id o slug Modrinth, oppure `cf:<id>` per
+    /// CurseForge) e le sue dipendenze in un'istanza.
     Add {
         instance: String,
         project: String,
@@ -51,9 +53,10 @@ pub enum ContentCommand {
 
 #[derive(Subcommand)]
 pub enum PackCommand {
-    /// Crea un'istanza da un file `.mrpack`.
+    /// Crea un'istanza da un modpack `.mrpack` o CurseForge `.zip`.
     Import { file: PathBuf },
-    /// Crea un'istanza dall'ultima versione di un modpack Modrinth.
+    /// Crea un'istanza dall'ultima versione di un modpack Modrinth (id o
+    /// slug) o CurseForge (`cf:<id>`).
     Install { project: String },
     /// Esporta un'istanza in un file `.mrpack`.
     Export { instance: String, file: PathBuf },
@@ -62,6 +65,32 @@ pub enum PackCommand {
 fn report(p: Progress) {
     eprint!("\r  file {}/{}   ", p.done, p.total);
     let _ = std::io::stderr().flush();
+}
+
+/// Id CurseForge da `cf:<id>`; `None` per gli id Modrinth.
+fn curseforge_id(project: &str) -> Result<Option<u32>> {
+    project
+        .strip_prefix("cf:")
+        .map(|id| {
+            id.parse()
+                .map_err(|_| anyhow::anyhow!("id CurseForge non valido: {id}"))
+        })
+        .transpose()
+}
+
+fn curseforge() -> Result<CurseForge> {
+    CurseForge::new().ok_or_else(|| anyhow::anyhow!("CurseForge non è disponibile in questa build"))
+}
+
+fn print_import(import: &PackImport) {
+    eprintln!();
+    println!("Istanza {:?} creata.", import.instance.config.name);
+    if !import.blocked.is_empty() {
+        println!("Da scaricare a mano (l'autore non permette il download dai launcher):");
+        for b in &import.blocked {
+            println!("  {} ({}) → {}", b.name, b.file_name, b.url);
+        }
+    }
 }
 
 fn dir_of(kind: ContentKind) -> Result<ContentDir> {
@@ -103,9 +132,14 @@ pub async fn content(app: &App, cmd: ContentCommand) -> Result<()> {
             world,
         } => {
             let instance = app.instances().load(&instance)?;
-            let plan = install::plan(&api, &instance, &project, kind, world.as_deref()).await?;
+            let plan = match curseforge_id(&project)? {
+                Some(id) => {
+                    cfinstall::plan(&curseforge()?, &instance, id, world.as_deref()).await?
+                }
+                None => install::plan(&api, &instance, &project, kind, world.as_deref()).await?,
+            };
             for f in &plan.files {
-                println!("  {} ({})", f.file.filename, f.version.version_number);
+                println!("  {} ({})", f.filename, f.version_number);
             }
             let installer = app.installer()?;
             plan.execute(&instance, installer.downloader(), Some(&report))
@@ -120,15 +154,21 @@ pub async fn content(app: &App, cmd: ContentCommand) -> Result<()> {
         }
         ContentCommand::List { instance, kind } => {
             let instance = app.instances().load(&instance)?;
-            for item in installed(&api, &instance, dir_of(kind)?, true).await? {
-                let title = item
-                    .project
-                    .as_ref()
-                    .map_or("(sconosciuto su Modrinth)", |p| p.title.as_str());
+            let cf = CurseForge::new();
+            for item in installed(&api, cf.as_ref(), &instance, dir_of(kind)?, true).await? {
+                let title = match (&item.project, &item.curseforge) {
+                    (Some(p), _) => p.title.clone(),
+                    (None, Some(c)) => format!("{} (CurseForge)", c.project.name),
+                    _ => "(sconosciuto)".to_owned(),
+                };
                 let update = item
                     .update
                     .as_ref()
                     .map(|v| format!("  → {}", v.version_number))
+                    .or_else(|| {
+                        let file = item.curseforge.as_ref()?.update.as_ref()?;
+                        Some(format!("  → {}", file.display_name))
+                    })
                     .unwrap_or_default();
                 let off = if item.file.enabled {
                     ""
@@ -143,6 +183,7 @@ pub async fn content(app: &App, cmd: ContentCommand) -> Result<()> {
             let installer = app.installer()?;
             let n = update(
                 &api,
+                CurseForge::new().as_ref(),
                 installer.downloader(),
                 &instance,
                 dir_of(kind)?,
@@ -163,11 +204,26 @@ pub async fn pack(app: &App, cmd: PackCommand) -> Result<()> {
     let manager = app.instances();
     match cmd {
         PackCommand::Import { file } => {
-            let instance = mrpack::import(&manager, downloader, &file, Some(&report)).await?;
-            eprintln!();
-            println!("Istanza {:?} creata.", instance.config.name);
+            let cf = CurseForge::new();
+            let import =
+                cfpack::import_any(cf.as_ref(), &manager, downloader, &file, Some(&report)).await?;
+            print_import(&import);
         }
         PackCommand::Install { project } => {
+            if let Some(id) = curseforge_id(&project)? {
+                let cache = app.paths.cache_dir();
+                let import = cfpack::install_from_curseforge(
+                    &curseforge()?,
+                    &manager,
+                    downloader,
+                    &cache,
+                    id,
+                    Some(&report),
+                )
+                .await?;
+                print_import(&import);
+                return Ok(());
+            }
             let api = Modrinth::new()?;
             let instance = mrpack::install_from_modrinth(
                 &api,

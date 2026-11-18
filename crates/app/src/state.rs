@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use hyper_content::Modrinth;
+use hyper_content::{CurseForge, Modrinth};
 use hyper_core::{Config, Paths};
 use hyper_installer::Installer;
 use hyper_instances::InstanceManager;
@@ -27,6 +27,8 @@ pub struct AppState {
     pub paths: Paths,
     /// Client del catalogo, condiviso (connessioni riusate).
     pub modrinth: Modrinth,
+    /// Client CurseForge: c'è solo se la build ha la chiave API.
+    pub curseforge: Option<CurseForge>,
     config: Mutex<Config>,
     /// Un solo client HTTP per tutta l'app (connessioni riusate); ricreato
     /// solo se cambia il numero di download in parallelo.
@@ -46,6 +48,7 @@ impl AppState {
         let installer = Installer::new(paths.clone(), config.download_concurrency)?;
         Ok(Self {
             modrinth: Modrinth::new()?,
+            curseforge: CurseForge::new(),
             paths,
             config: Mutex::new(config),
             installer: Mutex::new(installer),

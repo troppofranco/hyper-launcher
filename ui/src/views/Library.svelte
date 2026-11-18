@@ -27,7 +27,7 @@
       <p class="muted">{t('Le tue istanze di Minecraft, ognuna con mondi, mod e impostazioni separati.')}</p>
     </div>
     <span class="head-actions">
-      <button class="btn" onclick={() => app.importPack()} disabled={'' in app.contentProgress}>{'' in app.contentProgress ? t('Importazione…') : t('Importa .mrpack')}</button>
+      <button class="btn" onclick={() => app.importPack()} disabled={'' in app.contentProgress}>{'' in app.contentProgress ? t('Importazione…') : t('Importa modpack')}</button>
       <button class="btn" onclick={() => app.browse(null, 'modpack')}>{t('Sfoglia modpack')}</button>
       <button class="btn primary" onclick={() => (app.newInstanceOpen = true)}>{t('+ Nuova istanza')}</button>
     </span>

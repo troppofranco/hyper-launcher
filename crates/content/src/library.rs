@@ -10,6 +10,7 @@ use hyper_installer::hash::sha1_file;
 use hyper_installer::{DownloadTask, Downloader, Sha1Hex};
 use hyper_instances::{ContentDir, ContentFile, DISABLED, Instance};
 
+use crate::curseforge::{self, CfFile, CfMod, CurseForge, RELEASE, fingerprint, loader_type};
 use crate::install::download_replacing;
 use crate::modrinth::is_trusted_download;
 use crate::{ContentError, ContentKind, Modrinth, Project, Result, Version};
@@ -26,6 +27,34 @@ pub struct InstalledContent {
     pub project: Option<Project>,
     /// Versione più nuova compatibile con l'istanza.
     pub update: Option<Version>,
+    /// Se Modrinth non lo conosce ma CurseForge sì: progetto, file e
+    /// aggiornamento.
+    pub curseforge: Option<CfInstalled>,
+}
+
+/// Un file riconosciuto da CurseForge.
+#[derive(Debug, Clone)]
+pub struct CfInstalled {
+    pub project: CfMod,
+    pub file: CfFile,
+    /// File più nuovo per la versione del gioco e il loader dell'istanza.
+    pub update: Option<CfFile>,
+}
+
+/// Impronte CurseForge dei file (lettura dal disco: fuori dal runtime async).
+async fn fingerprints(paths: Vec<PathBuf>) -> Result<Vec<u32>> {
+    let prints = tokio::task::spawn_blocking(move || {
+        paths
+            .iter()
+            .map(|p| {
+                std::fs::read(p)
+                    .map(|bytes| fingerprint(&bytes))
+                    .map_err(|e| CoreError::io(p, e))
+            })
+            .collect::<Result<Vec<_>, CoreError>>()
+    })
+    .await??;
+    Ok(prints)
 }
 
 /// File della cartella con il loro SHA1 (lettura dal disco: va fuori dal
@@ -54,6 +83,7 @@ async fn hashed_files(
 /// `check_updates` cerca anche le versioni più nuove compatibili.
 pub async fn installed(
     api: &Modrinth,
+    cf: Option<&CurseForge>,
     instance: &Instance,
     dir: ContentDir,
     check_updates: bool,
@@ -120,9 +150,24 @@ pub async fn installed(
         _ => HashMap::new(),
     };
 
+    // I file che Modrinth non conosce si cercano su CurseForge.
+    let unknown: Vec<(usize, PathBuf)> = files
+        .iter()
+        .enumerate()
+        .filter(|(_, (_, _, sha1))| !versions.contains_key(sha1.as_str()))
+        .map(|(i, (_, path, _))| (i, path.clone()))
+        .collect();
+    let mut on_curseforge = match cf {
+        Some(cf) if !unknown.is_empty() => {
+            recognize_on_curseforge(cf, instance, kind, unknown, check_updates).await
+        }
+        _ => HashMap::new(),
+    };
+
     Ok(files
         .into_iter()
-        .map(|(file, path, sha1)| {
+        .enumerate()
+        .map(|(i, (file, path, sha1))| {
             let version = versions.remove(sha1.as_str());
             let update = updates
                 .remove(sha1.as_str())
@@ -137,8 +182,113 @@ pub async fn installed(
                 sha1,
                 version,
                 update,
+                curseforge: on_curseforge.remove(&i),
             }
         })
+        .collect())
+}
+
+/// Riconosce su CurseForge i file indicati (indice → percorso) e, con
+/// `check_updates`, cerca i loro aggiornamenti. CurseForge è solo un
+/// complemento: se non risponde i file restano semplicemente sconosciuti.
+async fn recognize_on_curseforge(
+    cf: &CurseForge,
+    instance: &Instance,
+    kind: ContentKind,
+    unknown: Vec<(usize, PathBuf)>,
+    check_updates: bool,
+) -> HashMap<usize, CfInstalled> {
+    let result = async {
+        let (indexes, paths): (Vec<usize>, Vec<PathBuf>) = unknown.into_iter().unzip();
+        let prints = fingerprints(paths).await?;
+        let matches: HashMap<u32, curseforge::FingerprintMatch> = cf
+            .by_fingerprint(&prints)
+            .await?
+            .into_iter()
+            .map(|m| (m.file.file_fingerprint, m))
+            .collect();
+        let mut ids: Vec<u32> = matches.values().map(|m| m.id).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        let projects: HashMap<u32, CfMod> = cf
+            .projects(&ids)
+            .await?
+            .into_iter()
+            .map(|p| (p.id, p))
+            .collect();
+
+        // Ultimo file per la versione del gioco e il loader dell'istanza; chi
+        // usa una release riceve solo release.
+        let game = instance.config.version.as_str();
+        let loader = match kind {
+            ContentKind::Mod => instance.config.loader.as_ref().map(|l| loader_type(l.kind)),
+            _ => None,
+        };
+        let newer = |m: &curseforge::FingerprintMatch| {
+            let project = projects.get(&m.id)?;
+            let latest = project.latest_file(game, loader, m.file.release_type == RELEASE)?;
+            (latest.file_id > m.file.id).then_some(latest.file_id)
+        };
+        let update_ids: Vec<u32> = if check_updates {
+            matches.values().filter_map(newer).collect()
+        } else {
+            Vec::new()
+        };
+        let mut updates: HashMap<u32, CfFile> = cf
+            .files(&update_ids)
+            .await?
+            .into_iter()
+            .map(|f| (f.mod_id, f))
+            .collect();
+
+        let mut found = HashMap::new();
+        for (index, print) in indexes.into_iter().zip(prints) {
+            let Some(m) = matches.get(&print) else {
+                continue;
+            };
+            let Some(project) = projects.get(&m.id) else {
+                continue;
+            };
+            found.insert(
+                index,
+                CfInstalled {
+                    project: project.clone(),
+                    file: m.file.clone(),
+                    update: updates.remove(&m.id),
+                },
+            );
+        }
+        Ok::<_, ContentError>(found)
+    }
+    .await;
+    result.unwrap_or_else(|e| {
+        tracing::warn!(error = %e, "cannot look up files on CurseForge");
+        HashMap::new()
+    })
+}
+
+/// Progetti CurseForge già presenti tra le mod (attive o no) → file.
+pub async fn installed_cf_projects(
+    cf: &CurseForge,
+    instance: &Instance,
+) -> Result<HashMap<u32, PathBuf>> {
+    let dir = instance.content_dir(ContentDir::Mods);
+    let paths: Vec<PathBuf> = instance
+        .content_files(ContentDir::Mods)
+        .into_iter()
+        .map(|f| dir.join(f.file))
+        .collect();
+    let prints = fingerprints(paths.clone()).await?;
+    let by_print: HashMap<u32, u32> = cf
+        .by_fingerprint(&prints)
+        .await?
+        .into_iter()
+        .map(|m| (m.file.file_fingerprint, m.id))
+        .collect();
+    Ok(paths
+        .into_iter()
+        .zip(prints)
+        .filter_map(|(path, print)| by_print.get(&print).map(|id| (*id, path)))
         .collect())
 }
 
@@ -166,6 +316,7 @@ pub async fn installed_mod_projects(
 /// sono stati aggiornati.
 pub async fn update(
     api: &Modrinth,
+    cf: Option<&CurseForge>,
     downloader: &Downloader,
     instance: &Instance,
     dir: ContentDir,
@@ -176,28 +327,35 @@ pub async fn update(
     let wanted: HashSet<&str> = only.iter().map(String::as_str).collect();
     let mut tasks = Vec::new();
     let mut replaced = Vec::new();
-    for item in installed(api, instance, dir, true).await? {
+    for item in installed(api, cf, instance, dir, true).await? {
         if !wanted.is_empty() && !wanted.contains(item.file.file.as_str()) {
             continue;
         }
-        let Some(file) = item.update.as_ref().and_then(Version::primary_file) else {
-            continue;
-        };
-        if !is_trusted_download(&file.url) {
-            return Err(ContentError::UntrustedUrl(file.url.clone()));
-        }
-        let mut name = safe_component(&file.filename)?.to_owned();
+        // URL, SHA1, dimensione e nome del file nuovo, da Modrinth o CurseForge.
+        let (url, sha1, size, filename) =
+            if let Some(file) = item.update.as_ref().and_then(Version::primary_file) {
+                if !is_trusted_download(&file.url) {
+                    return Err(ContentError::UntrustedUrl(file.url.clone()));
+                }
+                let sha1 = file.hashes.sha1.clone();
+                (file.url.clone(), sha1, file.size, file.filename.clone())
+            } else if let Some(file) = item.curseforge.and_then(|c| c.update) {
+                match file.download() {
+                    Ok((url, sha1)) => (url, sha1, file.file_length, file.file_name),
+                    // Da aggiornare a mano dal sito: si salta.
+                    Err(ContentError::DistributionBlocked { .. }) => continue,
+                    Err(e) => return Err(e),
+                }
+            } else {
+                continue;
+            };
+        let mut name = safe_component(&filename)?.to_owned();
         if !item.file.enabled {
             name.push_str(DISABLED);
         }
         // Stesso controllo di nome dei file aggiunti a mano.
         let dest = instance.content_path(dir, &name)?;
-        tasks.push(DownloadTask::new(
-            &file.url,
-            dest.clone(),
-            file.hashes.sha1.clone(),
-            Some(file.size),
-        ));
+        tasks.push(DownloadTask::new(url, dest.clone(), sha1, Some(size)));
         replaced.push((item.path, dest));
     }
     let count = tasks.len();

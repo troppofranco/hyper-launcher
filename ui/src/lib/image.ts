@@ -126,3 +126,15 @@ export async function skinFront(skin: string, slim: boolean, scale = 6): Promise
   }
   return canvas.toDataURL('image/png');
 }
+
+/** Testa di una skin vista di fronte (viso + strato del cappello), nitida. */
+export async function skinHead(skin: string, size = 64): Promise<string> {
+  const img = await loadImage(skin);
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(img, 8, 8, 8, 8, 0, 0, size, size);
+  ctx.drawImage(img, 40, 8, 8, 8, 0, 0, size, size);
+  return canvas.toDataURL('image/png');
+}

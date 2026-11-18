@@ -1,8 +1,10 @@
 //! Dati inviati all'interfaccia (serializzati in camelCase per TypeScript).
 
 use hyper_auth::Account;
+use hyper_content::cfpack::PackImport;
+use hyper_content::curseforge::CfMod;
 use hyper_content::library::InstalledContent;
-use hyper_content::{InstallPlan, Project, SearchResults};
+use hyper_content::{ContentKind, InstallPlan, Project, SearchResults};
 use hyper_installer::LoaderKind;
 use hyper_instances::{ContentFile, Instance, World};
 use serde::Serialize;
@@ -76,15 +78,19 @@ pub struct AccountView {
     pub uuid: String,
     pub kind: &'static str,
     pub default: bool,
+    /// Skin scelta per l'account (PNG come `data:` URL): la sua testa fa
+    /// da immagine del profilo.
+    pub skin: Option<String>,
 }
 
 impl AccountView {
-    pub fn new(account: &Account, default: bool) -> Self {
+    pub fn new(account: &Account, default: bool, skin: Option<String>) -> Self {
         Self {
             name: account.name().to_owned(),
             uuid: account.uuid().to_string(),
             kind: account.kind(),
             default,
+            skin,
         }
     }
 }
@@ -128,6 +134,8 @@ pub struct AppInfo {
     pub version: &'static str,
     pub build: Option<u64>,
     pub data_dir: String,
+    /// CurseForge disponibile (la build ha la chiave API).
+    pub curseforge: bool,
 }
 
 #[derive(Serialize)]
@@ -267,11 +275,11 @@ impl From<&InstallPlan> for PlanView {
                 .files
                 .iter()
                 .map(|f| PlannedView {
-                    project_id: f.version.project_id.clone(),
-                    name: f.version.name.clone(),
-                    version_number: f.version.version_number.clone(),
-                    file: f.file.filename.clone(),
-                    size_bytes: f.file.size,
+                    project_id: f.project_id.clone(),
+                    name: f.name.clone(),
+                    version_number: f.version_number.clone(),
+                    file: f.filename.clone(),
+                    size_bytes: f.size,
                     folder: f
                         .dest
                         .parent()
@@ -299,6 +307,10 @@ pub struct ContentView {
     pub icon_url: Option<String>,
     pub version_number: Option<String>,
     pub update: Option<String>,
+    /// Dove è stato riconosciuto: `modrinth` o `curseforge`.
+    pub source: Option<&'static str>,
+    /// Pagina del progetto (solo CurseForge: per Modrinth c'è il dettaglio).
+    pub website: Option<String>,
 }
 
 impl From<ContentFile> for ContentView {
@@ -314,6 +326,8 @@ impl From<ContentFile> for ContentView {
             icon_url: None,
             version_number: None,
             update: None,
+            source: None,
+            website: None,
         }
     }
 }
@@ -321,7 +335,22 @@ impl From<ContentFile> for ContentView {
 impl From<InstalledContent> for ContentView {
     fn from(c: InstalledContent) -> Self {
         let project = c.project;
+        if project.is_none()
+            && let Some(cf) = c.curseforge
+        {
+            return Self {
+                project_id: Some(format!("cf:{}", cf.project.id)),
+                title: Some(cf.project.name.clone()),
+                icon_url: cf.project.icon_url().map(str::to_owned),
+                website: Some(cf.project.website()),
+                version_number: Some(cf.file.display_name),
+                update: cf.update.map(|f| f.display_name),
+                source: Some("curseforge"),
+                ..Self::from(c.file)
+            };
+        }
         Self {
+            source: project.is_some().then_some("modrinth"),
             project_id: c.version.as_ref().map(|v| v.project_id.clone()),
             version_number: c.version.map(|v| v.version_number),
             update: c.update.map(|v| v.version_number),
@@ -347,4 +376,77 @@ pub struct ExportView {
     pub path: String,
     pub linked: usize,
     pub bundled: usize,
+}
+
+/// Un progetto CurseForge (schede di Esplora e anteprima per Project ID).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CfProjectView {
+    pub id: u32,
+    pub name: String,
+    pub summary: String,
+    pub author: String,
+    pub icon_url: Option<String>,
+    pub downloads: u64,
+    pub kind: Option<ContentKind>,
+    pub website: String,
+    pub updated: String,
+}
+
+impl From<&CfMod> for CfProjectView {
+    fn from(m: &CfMod) -> Self {
+        Self {
+            id: m.id,
+            name: m.name.clone(),
+            summary: m.summary.clone(),
+            author: m.author(),
+            icon_url: m.icon_url().map(str::to_owned),
+            downloads: m.download_count.max(0.0) as u64,
+            kind: m.kind(),
+            website: m.website(),
+            updated: m.date_modified.clone(),
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CfFeaturedView {
+    pub featured: Vec<CfProjectView>,
+    pub popular: Vec<CfProjectView>,
+    pub recent: Vec<CfProjectView>,
+}
+
+/// File di un modpack da scaricare a mano dal sito CurseForge.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlockedView {
+    pub name: String,
+    pub file_name: String,
+    pub url: String,
+}
+
+/// Esito dell'import o dell'installazione di un modpack.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PackImportView {
+    pub instance: InstanceView,
+    pub blocked: Vec<BlockedView>,
+}
+
+impl From<PackImport> for PackImportView {
+    fn from(p: PackImport) -> Self {
+        Self {
+            instance: InstanceView::new(&p.instance),
+            blocked: p
+                .blocked
+                .into_iter()
+                .map(|b| BlockedView {
+                    name: b.name,
+                    file_name: b.file_name,
+                    url: b.url,
+                })
+                .collect(),
+        }
+    }
 }

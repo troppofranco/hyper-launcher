@@ -7,6 +7,9 @@
 //! arriva da fuori (nomi di file, percorsi nei modpack) è validato contro
 //! il path traversal.
 
+pub mod cfinstall;
+pub mod cfpack;
+pub mod curseforge;
 mod error;
 pub mod install;
 pub mod library;
@@ -17,6 +20,7 @@ use hyper_installer::LoaderKind;
 use hyper_instances::ContentDir;
 use serde::{Deserialize, Serialize};
 
+pub use curseforge::CurseForge;
 pub use error::{ContentError, Result};
 pub use install::{InstallPlan, PlannedFile};
 pub use library::InstalledContent;
