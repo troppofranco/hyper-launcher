@@ -1,7 +1,8 @@
 //! Aggiornamento automatico del launcher dalle release GitHub.
 //!
-//! Ogni push su `main` pubblica una release `build-<N>` con il setup e il
-//! suo SHA1. Il launcher conosce il proprio numero di build (incorporato in
+//! Ogni push su `main` pubblica una release con il setup e il suo SHA1,
+//! taggata con la versione (`v0.1.<N>`; le prime usavano `build-<N>`). Il
+//! launcher conosce il proprio numero di release N (incorporato in
 //! compilazione); se l'ultima release ha un numero più alto, scarica il
 //! setup, ne verifica l'hash e lo esegue in modo silenzioso, che aggiorna
 //! l'installazione sul posto.
@@ -15,12 +16,26 @@ use crate::{DownloadTask, Downloader, InstallerError, Result, Sha1Hex};
 
 const SETUP_ASSET: &str = "HyperLauncher-Setup.exe";
 const SHA1_ASSET: &str = "HyperLauncher-Setup.exe.sha1";
-const TAG_PREFIX: &str = "build-";
+/// Numero di release N dal tag: `v<major>.<minor>.<N>` oppure `build-<N>`
+/// (il formato delle prime release, che i launcher più vecchi cercano ancora).
+fn release_number(tag: &str) -> Option<u64> {
+    if let Some(n) = tag.strip_prefix("build-") {
+        return n.parse().ok();
+    }
+    let mut parts = tag.strip_prefix('v')?.split('.');
+    let (major, minor, n) = (parts.next()?, parts.next()?, parts.next()?);
+    if parts.next().is_some() || major.parse::<u64>().is_err() || minor.parse::<u64>().is_err() {
+        return None;
+    }
+    n.parse().ok()
+}
 
 /// Una versione più nuova disponibile.
 #[derive(Debug, Clone)]
 pub struct AvailableUpdate {
     pub build: u64,
+    /// Pagina della release su GitHub.
+    pub page_url: String,
     setup_url: String,
     setup_size: u64,
     sha1_url: String,
@@ -29,6 +44,8 @@ pub struct AvailableUpdate {
 #[derive(Debug, Deserialize)]
 struct Release {
     tag_name: String,
+    #[serde(default)]
+    html_url: String,
     assets: Vec<Asset>,
 }
 
@@ -130,7 +147,7 @@ pub async fn check(api_url: &str, current_build: u64) -> Result<Option<Available
 }
 
 fn newer_than(release: &Release, current_build: u64) -> Option<AvailableUpdate> {
-    let build: u64 = release.tag_name.strip_prefix(TAG_PREFIX)?.parse().ok()?;
+    let build = release_number(&release.tag_name)?;
     if build <= current_build {
         return None;
     }
@@ -139,6 +156,7 @@ fn newer_than(release: &Release, current_build: u64) -> Option<AvailableUpdate> 
     let sha1 = asset(SHA1_ASSET)?;
     Some(AvailableUpdate {
         build,
+        page_url: release.html_url.clone(),
         setup_url: setup.browser_download_url.clone(),
         setup_size: setup.size,
         sha1_url: sha1.browser_download_url.clone(),
@@ -209,6 +227,19 @@ pub fn clean_old_setups(dir: &Path, keep: Option<&Path>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn release_numbers_from_both_tag_styles() {
+        assert_eq!(release_number("build-12"), Some(12));
+        assert_eq!(release_number("v0.1.14"), Some(14));
+        assert_eq!(release_number("v1.2.30"), Some(30));
+        assert_eq!(release_number("v0.1"), None);
+        assert_eq!(release_number("v0.1.2.3"), None);
+        assert_eq!(release_number("0.1.14"), None);
+        assert_eq!(release_number("build-x"), None);
+        let update = newer_than(&release("v0.1.14", true), 13).unwrap();
+        assert_eq!(update.build, 14);
+    }
 
     #[test]
     fn version_names() {
