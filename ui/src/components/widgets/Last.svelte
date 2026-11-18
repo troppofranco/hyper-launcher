@@ -29,7 +29,8 @@
 {/if}
 
 <style>
-  .last { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+  /* Nella tessera più alta: il pulsante Gioca resta in fondo. */
+  .last { padding: 16px; display: flex; flex-direction: column; justify-content: space-between; gap: 14px; }
   .who { display: flex; align-items: center; gap: 14px; background: none; border: 0; padding: 0; text-align: left; color: var(--text); min-width: 0; }
   .meta { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
   .name { font-weight: 600; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

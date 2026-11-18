@@ -21,7 +21,7 @@
 </div>
 
 <style>
-  .stats { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+  .stats { padding: 16px; display: flex; flex-direction: column; justify-content: space-between; gap: 14px; }
   .nums { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .nums > div { display: flex; flex-direction: column; gap: 2px; }
   .num { font-family: var(--display); font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }

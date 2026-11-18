@@ -31,7 +31,7 @@
 </section>
 
 <style>
-  .quick { display: flex; align-items: center; gap: 14px; padding: 12px 16px; flex-wrap: wrap; }
+  .quick { display: flex; align-items: center; align-content: center; gap: 14px; padding: 12px 16px; flex-wrap: wrap; }
   .quick-label { display: flex; align-items: center; gap: 8px; color: var(--muted); font-weight: 600; }
   .quick-sep { width: 1px; height: 30px; background: var(--line-strong); }
   .quick-icons { display: flex; gap: 10px; flex-wrap: wrap; }

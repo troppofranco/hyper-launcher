@@ -19,7 +19,7 @@
 </header>
 
 <style>
-  .head { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .head { flex: 1; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
   .head p { margin: 6px 0 0; }
   .lib-btn { display: flex; align-items: center; gap: 12px; padding: 12px 18px; text-align: left; color: var(--text); }
   .lib-btn > span { display: flex; flex-direction: column; }

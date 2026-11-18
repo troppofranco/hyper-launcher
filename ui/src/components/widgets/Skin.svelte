@@ -28,7 +28,7 @@
 </button>
 
 <style>
-  .skin { width: 100%; padding: 14px; display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--text); }
+  .skin { width: 100%; padding: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--text); }
   .stage { display: flex; justify-content: center; border-radius: var(--radius-sm); background: radial-gradient(circle at 50% 60%, color-mix(in srgb, var(--accent) 25%, transparent), transparent 70%); width: 100%; }
   .empty { height: 160px; align-items: center; color: var(--muted); }
   .name { font-weight: 600; }

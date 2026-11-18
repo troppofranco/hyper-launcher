@@ -4,7 +4,7 @@
   import { t } from '../lib/i18n.svelte';
   import type { WidgetConfig, WidgetSize } from '../lib/api';
   import { app } from '../lib/store.svelte';
-  import { SIZES, WIDGETS, defaultLayout, newWidget, option, widgetDef } from '../lib/widgets';
+  import { SIZES, WIDGETS, defaultLayout, newWidget, option, packSpans, widgetDef } from '../lib/widgets';
   import { motionLevel, ms } from '../lib/motion.svelte';
   import Icon from '../components/Icon.svelte';
   import Greeting from '../components/widgets/Greeting.svelte';
@@ -33,6 +33,8 @@
   const editing = $derived(app.homeEditing);
   const items = $derived(editing ? draft : saved);
   const hidden = $derived(WIDGETS.filter((w) => !draft.some((d) => d.kind === w.kind)));
+  // Larghezze a incastro: ogni riga è piena, senza buchi.
+  const spans = $derived(packSpans(items));
 
   // Entrando in modifica (anche dalle Impostazioni) si parte dalla Home salvata.
   let wasEditing = false;
@@ -199,7 +201,8 @@
     {#each items as w, i (w.kind)}
       {@const def = widgetDef(w.kind)}
       <section
-        class="w {w.size}"
+        class="w"
+        style:grid-column="span {spans.get(w.kind) ?? 12}"
         class:dragging={dragging === w.kind}
         class:wiggle={editing && motionLevel() === 'full' && dragging === null}
         style:--i={i}
@@ -278,19 +281,21 @@
   .editbar .txt { display: flex; flex-direction: column; gap: 2px; }
   .editbar .small { color: var(--text-2); }
   .actions { display: flex; gap: 8px; }
-  .grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 22px 18px; align-items: start; container-type: inline-size; }
-  .w { position: relative; min-width: 0; display: flex; flex-direction: column; container: widget / inline-size; }
-  .w.small { grid-column: span 4; }
-  .w.medium { grid-column: span 6; }
-  .w.large { grid-column: span 12; }
-  @container (max-width: 820px) {
-    .w.small, .w.medium { grid-column: span 6; }
-  }
-  @container (max-width: 560px) {
-    .w.small, .w.medium { grid-column: span 12; }
+  /* Griglia a incastro: le righe sono piene (vedi packSpans) e i widget di
+     una riga hanno la stessa altezza, così i bordi si allineano. */
+  .grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; align-items: stretch; container-type: inline-size; }
+  .w { position: relative; min-width: 0; display: flex; flex-direction: column; container: widget / inline-size; padding: 16px 18px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); }
+  .body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  /* Il contenuto di un widget sta nella sua tessera: la sua card esterna
+     diventa piatta e riempie lo spazio; quelle interne restano distinte. */
+  .body :global(.card) { background: color-mix(in srgb, var(--surface-2) 70%, transparent); }
+  .body > :global(.card), .body > :global(section > .card:only-child) { flex: 1; background: transparent; border: 0; box-shadow: none; padding: 0; transform: none; }
+  /* Finestra stretta: un widget per riga. */
+  @container (max-width: 720px) {
+    .w { grid-column: span 12 !important; }
   }
   .section-title { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
-  .editing .w { padding: 10px; border-radius: calc(var(--radius) + 4px); border: 1.5px dashed var(--line-strong); background: color-mix(in srgb, var(--c-surface) 40%, transparent); cursor: grab; transition: border-color .2s ease, box-shadow .2s ease, opacity .2s ease; }
+  .editing .w { border: 1.5px dashed var(--line-strong); cursor: grab; transition: border-color .2s ease, box-shadow .2s ease, opacity .2s ease; }
   .editing .w:hover { border-color: var(--accent-line); }
   .editing .w { touch-action: none; }
   /* Il widget in mano: sopra agli altri, ombra profonda, non intercetta il puntatore. */

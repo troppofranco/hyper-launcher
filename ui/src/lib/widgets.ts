@@ -55,3 +55,42 @@ export function newWidget(kind: string): WidgetConfig {
 export function option(w: WidgetConfig, key: string): number {
   return w.options[key] ?? widgetDef(w.kind)?.options.find((o) => o.key === key)?.default ?? 0;
 }
+
+/** Colonne (su 12) che ogni larghezza chiede. */
+const SPAN: Record<WidgetSize, number> = { small: 4, medium: 6, large: 12 };
+
+/**
+ * Larghezze effettive, a incastro: i widget vanno in righe da 12 colonne
+ * nell'ordine scelto; se in una riga avanza spazio (es. un widget piccolo
+ * da solo, o piccolo + medio) i widget di quella riga crescono in
+ * proporzione fino a riempirla. Così non restano buchi.
+ */
+export function packSpans(widgets: WidgetConfig[]): Map<string, number> {
+  const rows: WidgetConfig[][] = [];
+  let used = 12;
+  for (const w of widgets) {
+    const span = SPAN[w.size] ?? 12;
+    if (used + span > 12) {
+      rows.push([]);
+      used = 0;
+    }
+    rows[rows.length - 1].push(w);
+    used += span;
+  }
+  const spans = new Map<string, number>();
+  for (const row of rows) {
+    const asked = row.map((w) => SPAN[w.size] ?? 12);
+    const total = asked.reduce((a, b) => a + b, 0);
+    const exact = asked.map((s) => (s * 12) / total);
+    const given = exact.map(Math.floor);
+    // Le colonne rimaste vanno a chi ha perso di più arrotondando.
+    let left = 12 - given.reduce((a, b) => a + b, 0);
+    const byFraction = exact.map((x, i) => [x - Math.floor(x), i]).sort((a, b) => b[0] - a[0]);
+    for (const [, i] of byFraction) {
+      if (left-- <= 0) break;
+      given[i]++;
+    }
+    row.forEach((w, i) => spans.set(w.kind, given[i]));
+  }
+  return spans;
+}
