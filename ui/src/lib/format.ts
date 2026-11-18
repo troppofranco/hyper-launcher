@@ -1,7 +1,9 @@
-// Formattazione in italiano di tempi, date e dimensioni.
+// Formattazione di tempi, date e dimensioni (nella lingua dell'interfaccia).
+
+import { t, locale } from './i18n.svelte';
 
 export function playtime(secs: number): string {
-  if (secs < 60) return secs > 0 ? 'meno di 1m' : '0m';
+  if (secs < 60) return secs > 0 ? t('meno di 1m') : '0m';
   const h = Math.floor(secs / 3600);
   const m = Math.floor((secs % 3600) / 60);
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
@@ -9,20 +11,20 @@ export function playtime(secs: number): string {
 
 /** "Oggi", "Ieri", "3 giorni fa" oppure la data. */
 export function relativeDay(unixSecs: number | null): string {
-  if (!unixSecs) return 'Mai';
+  if (!unixSecs) return t('Mai');
   const date = new Date(unixSecs * 1000);
   const today = new Date();
   const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   const days = Math.round((startOfDay(today) - startOfDay(date)) / 86_400_000);
-  if (days <= 0) return 'Oggi';
-  if (days === 1) return 'Ieri';
-  if (days < 7) return `${days} giorni fa`;
-  return date.toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' });
+  if (days <= 0) return t('Oggi');
+  if (days === 1) return t('Ieri');
+  if (days < 7) return t('{n} giorni fa', { n: days });
+  return date.toLocaleDateString(locale(), { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 export function isoDate(iso: string): string {
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' });
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString(locale(), { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 export function megabytes(bytes: number): string {
@@ -54,15 +56,18 @@ export function loaderLabel(i: { version: string; loader: { name: string; versio
   return i.loader ? `${i.loader.name} ${i.loader.version}` : 'Vanilla';
 }
 
-const compactFormat = new Intl.NumberFormat('it-IT', { notation: 'compact', maximumFractionDigits: 1 });
+const compactFormats = new Map<string, Intl.NumberFormat>();
 
 /** "98 Mln", "12.000" → numeri brevi per i download. */
 export function compact(n: number): string {
-  return compactFormat.format(n);
+  const loc = locale();
+  let f = compactFormats.get(loc);
+  if (!f) compactFormats.set(loc, (f = new Intl.NumberFormat(loc, { notation: 'compact', maximumFractionDigits: 1 })));
+  return f.format(n);
 }
 
 /** Come relativeDay, ma da una data ISO (es. quelle di Modrinth). */
 export function relativeIso(iso: string): string {
-  const t = Date.parse(iso);
-  return Number.isNaN(t) ? '' : relativeDay(Math.floor(t / 1000));
+  const ms = Date.parse(iso);
+  return Number.isNaN(ms) ? '' : relativeDay(Math.floor(ms / 1000));
 }

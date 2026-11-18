@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api, type SearchHit } from '../lib/api';
+  import { t } from '../lib/i18n.svelte';
   import { app } from '../lib/store.svelte';
   import { compact, isoDate, loaderLabel } from '../lib/format';
   import Icon from '../components/Icon.svelte';
@@ -9,7 +10,7 @@
   import ServerList from '../components/ServerList.svelte';
 
   const GREETINGS = ['Pronto a costruire qualcosa di grande?', 'Il mondo ti aspetta.', 'Si gioca?', 'Un altro blocco, un’altra avventura.'];
-  const greeting = GREETINGS[new Date().getDate() % GREETINGS.length];
+  const greetingIndex = new Date().getDate() % GREETINGS.length;
 
   const quick = $derived(app.recent.slice(0, 8));
   const featuredNews = $derived(app.news[0] ?? null);
@@ -28,7 +29,7 @@
 
   function cover(hit: SearchHit): string {
     const hex = `#${(hit.color ?? 0x2a2f3a).toString(16).padStart(6, '0')}`;
-    return `linear-gradient(135deg, color-mix(in srgb, ${hex} 55%, #12151b), #12151b)`;
+    return `linear-gradient(135deg, color-mix(in srgb, ${hex} 55%, var(--panel)), var(--panel))`;
   }
 
   function openPack(hit: SearchHit) {
@@ -40,25 +41,25 @@
 <div class="page home">
   <header class="head enter">
     <div>
-      <h1 class="page-title">{app.activeAccount ? `Bentornato, ${app.activeAccount.name}` : 'Benvenuto in Hyper Launcher'}</h1>
-      <p class="muted">{app.instances.length ? greeting : 'Crea la tua prima istanza per iniziare a giocare.'}</p>
+      <h1 class="page-title">{app.activeAccount ? t('Bentornato, {nome}', { nome: app.activeAccount.name }) : t('Benvenuto in Hyper Launcher')}</h1>
+      <p class="muted">{app.instances.length ? t(GREETINGS[greetingIndex]) : t('Crea la tua prima istanza per iniziare a giocare.')}</p>
     </div>
     <button class="card lib-btn" onclick={() => app.go({ view: 'library' })}>
       <Icon name="library" size={20} />
-      <span><span class="strong">Libreria</span><span class="muted small">Tutte le tue istanze</span></span>
+      <span><span class="strong">{t('Libreria')}</span><span class="muted small">{t('Tutte le tue istanze')}</span></span>
     </button>
   </header>
 
-  <section class="card quick enter" style:--i={1} aria-label="Gioca subito">
-    <span class="quick-label"><Icon name="play" size={16} /> Gioca subito</span>
+  <section class="card quick enter" style:--i={1} aria-label={t('Gioca subito')}>
+    <span class="quick-label"><Icon name="play" size={16} /> {t('Gioca subito')}</span>
     <span class="quick-sep"></span>
     <div class="quick-icons">
       {#each quick as inst (inst.name)}
         <button
           class="quick-btn"
           class:running={!!app.launches[inst.name]}
-          title="Gioca a {inst.name} · {loaderLabel(inst)} {inst.version}"
-          aria-label="Gioca a {inst.name}"
+          title={t('Gioca a {nome} · {loader} {versione}', { nome: inst.name, loader: loaderLabel(inst), versione: inst.version })}
+          aria-label={t('Gioca a {nome}', { nome: inst.name })}
           disabled={!!app.launches[inst.name]}
           onclick={() => app.play(inst.name)}
         >
@@ -66,14 +67,14 @@
           <span class="play-badge"><Icon name="play" size={12} /></span>
         </button>
       {/each}
-      <button class="quick-btn add" aria-label="Nuova istanza" title="Nuova istanza" onclick={() => (app.newInstanceOpen = true)}><Icon name="plus" size={18} /></button>
+      <button class="quick-btn add" aria-label={t('Nuova istanza')} title={t('Nuova istanza')} onclick={() => (app.newInstanceOpen = true)}><Icon name="plus" size={18} /></button>
     </div>
   </section>
 
   <section aria-labelledby="hub-title" class="enter" style:--i={2}>
     <div class="section-head">
-      <h2 id="hub-title" class="section-title">Scopri nel catalogo</h2>
-      <button class="link" onclick={() => app.browse(null, 'modpack')}>Vedi tutti <Icon name="back" size={14} /></button>
+      <h2 id="hub-title" class="section-title">{t('Scopri nel catalogo')}</h2>
+      <button class="link" onclick={() => app.browse(null, 'modpack')}>{t('Vedi tutti')} <Icon name="back" size={14} /></button>
     </div>
     <div class="packs">
       {#if featured === null}
@@ -88,7 +89,7 @@
             <span class="pack-body">
               <span class="pack-title">{hit.title}</span>
               <span class="pack-desc">{hit.description}</span>
-              <span class="pack-foot"><span>di {hit.author}</span><span><Icon name="download" size={12} /> {compact(hit.downloads)}</span></span>
+              <span class="pack-foot"><span>{t('di {autore}', { autore: hit.author })}</span><span><Icon name="download" size={12} /> {compact(hit.downloads)}</span></span>
             </span>
           </button>
         {/each}
@@ -99,21 +100,21 @@
   <div class="two enter" style:--i={4}>
     <ServerList />
     <section aria-labelledby="week-title-home">
-      <h2 id="week-title-home" class="section-title">Il tuo tempo di gioco</h2>
+      <h2 id="week-title-home" class="section-title">{t('Il tuo tempo di gioco')}</h2>
       <PlaytimeWeek showTitle={false} />
     </section>
   </div>
 
   {#if featuredNews}
     <section aria-labelledby="news-title" class="enter" style:--i={5}>
-      <h2 id="news-title" class="section-title">Notizie</h2>
+      <h2 id="news-title" class="section-title">{t('Notizie')}</h2>
       <button class="card news" onclick={() => api.openUrl(featuredNews.url)}>
         <span class="news-img">{#if featuredNews.image}<img src={featuredNews.image} alt="" />{/if}</span>
         <span class="news-body">
-          <span class="news-meta"><span class="tag">NOTIZIA</span><span class="muted small">{isoDate(featuredNews.date)}</span></span>
+          <span class="news-meta"><span class="tag">{t('NOTIZIA')}</span><span class="muted small">{isoDate(featuredNews.date)}</span></span>
           <span class="news-title">{featuredNews.title}</span>
           {#if featuredNews.text}<span class="muted">{featuredNews.text}</span>{/if}
-          <span class="read">Leggi di più <Icon name="external" size={14} /></span>
+          <span class="read">{t('Leggi di più')} <Icon name="external" size={14} /></span>
         </span>
       </button>
     </section>
@@ -136,7 +137,7 @@
   .quick-btn:active:not(:disabled) { transform: scale(.94); }
   .play-badge { position: absolute; right: -4px; bottom: -4px; width: 20px; height: 20px; border-radius: 10px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; opacity: 0; transform: scale(.6); transition: opacity .18s, transform .18s; border: 2px solid var(--surface); }
   .quick-btn:hover .play-badge { opacity: 1; transform: scale(1); }
-  .quick-btn.running::after { content: ''; position: absolute; inset: -3px; border-radius: 14px; border: 2px solid #3fb97f; animation: ring 1.4s ease-in-out infinite; }
+  .quick-btn.running::after { content: ''; position: absolute; inset: -3px; border-radius: 14px; border: 2px solid var(--success); animation: ring 1.4s ease-in-out infinite; }
   .quick-btn.add { width: 40px; height: 40px; border: 1px dashed var(--line-strong); color: var(--muted); display: flex; align-items: center; justify-content: center; }
   .quick-btn.add:hover { color: var(--text); border-color: var(--accent-line); }
   .section-head { display: flex; justify-content: space-between; align-items: baseline; }

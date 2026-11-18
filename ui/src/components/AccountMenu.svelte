@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '../lib/i18n.svelte';
   import { api } from '../lib/api';
   import { app } from '../lib/store.svelte';
   import { initial } from '../lib/format';
@@ -30,7 +31,7 @@
 </script>
 
 <svelte:window onkeydown={(e) => e.key === 'Escape' && onclose()} />
-<button class="backdrop" aria-label="Chiudi menu account" onclick={onclose}></button>
+<button class="backdrop" aria-label={t('Chiudi menu account')} onclick={onclose}></button>
 <div class="menu" role="menu">
   {#each app.accounts as a (a.uuid)}
     <div class="row" class:active={a.default}>
@@ -38,15 +39,15 @@
         <span class="av">{initial(a.name)}</span>
         <span class="who">
           <span class="name">{a.name}</span>
-          <span class="kind">{a.kind === 'microsoft' ? 'Account Microsoft' : 'Account offline'}{a.default ? ' · attivo' : ''}</span>
+          <span class="kind">{a.kind === 'microsoft' ? t('Account Microsoft') : t('Account offline')}{a.default ? ' · ' + t('attivo') : ''}</span>
         </span>
       </button>
-      <button class="remove" aria-label="Rimuovi {a.name}" title="Rimuovi" onclick={() => remove(a.name)}><Icon name="logout" size={16} /></button>
+      <button class="remove" aria-label={t('Rimuovi {nome}', { nome: a.name })} title={t('Rimuovi')} onclick={() => remove(a.name)}><Icon name="logout" size={16} /></button>
     </div>
   {:else}
-    <p class="empty">Nessun account. Aggiungine uno per giocare.</p>
+    <p class="empty">{t('Nessun account. Aggiungine uno per giocare.')}</p>
   {/each}
-  <button class="btn add" onclick={add}><Icon name="plus" size={16} /> Aggiungi account</button>
+  <button class="btn add" onclick={add}><Icon name="plus" size={16} /> {t('Aggiungi account')}</button>
 </div>
 
 <style>
@@ -61,7 +62,7 @@
   .name { font-weight: 600; }
   .kind { font-size: 12px; color: var(--muted); }
   .remove { width: 36px; height: 36px; border: 0; background: transparent; color: var(--muted); border-radius: 8px; margin-right: 4px; }
-  .remove:hover { color: #ff8a8e; background: var(--surface-2); }
+  .remove:hover { color: var(--danger-text); background: var(--surface-2); }
   .empty { margin: 6px; color: var(--muted); }
   .add { margin-top: 4px; }
 </style>

@@ -1,8 +1,9 @@
 <script lang="ts">
+  import { t } from '../lib/i18n.svelte';
   import { api, type SearchHit, type VersionInfo } from '../lib/api';
   import { app } from '../lib/store.svelte';
   import { compact, loaderLabel, relativeIso } from '../lib/format';
-  import { KINDS, LOADERS, MOD_CATEGORIES, dirOf, incompatibility, kindLabel } from '../lib/content';
+  import { KINDS, LOADERS, modCategories, dirOf, incompatibility, kindLabel } from '../lib/content';
   import Icon from '../components/Icon.svelte';
   import ProjectIcon from '../components/ProjectIcon.svelte';
   import ProgressBar from '../components/ProgressBar.svelte';
@@ -94,7 +95,7 @@
   /** Colore di riserva per la copertina (dal colore dell'icona). */
   function cover(hit: SearchHit): string {
     const hex = `#${(hit.color ?? 0x2a2f3a).toString(16).padStart(6, '0')}`;
-    return `linear-gradient(135deg, color-mix(in srgb, ${hex} 55%, #12151b), #12151b)`;
+    return `linear-gradient(135deg, color-mix(in srgb, ${hex} 55%, var(--panel)), var(--panel))`;
   }
 </script>
 
@@ -102,17 +103,17 @@
   <div class="main">
     <div class="page-head">
       <div>
-        <h1 class="page-title">Esplora</h1>
-        <p class="muted">Modpack, mod e risorse da Modrinth, installati con le loro dipendenze.</p>
+        <h1 class="page-title">{t('Esplora')}</h1>
+        <p class="muted">{t('Modpack, mod e risorse da Modrinth, installati con le loro dipendenze.')}</p>
       </div>
-      <button class="btn" onclick={() => app.importPack()} disabled={'' in app.contentProgress}><Icon name="upload" size={16} /> Importa .mrpack</button>
+      <button class="btn" onclick={() => app.importPack()} disabled={'' in app.contentProgress}><Icon name="upload" size={16} /> {t('Importa .mrpack')}</button>
     </div>
 
     {#if !isPack}
       <div class="context">
-        <label for="explore-target" class="muted">Installa in</label>
+        <label for="explore-target" class="muted">{t('Installa in')}</label>
         <select id="explore-target" class="input" bind:value={ex.instance}>
-          <option value={null}>Nessuna istanza (mostra tutto)</option>
+          <option value={null}>{t('Nessuna istanza (mostra tutto)')}</option>
           {#each app.recent as inst (inst.name)}
             <option value={inst.name}>{inst.name} · {loaderLabel(inst)} {inst.version}</option>
           {/each}
@@ -120,44 +121,44 @@
         {#if target}
           <span class="pill">{target.version}</span>
           <span class="pill">{loaderLabel(target)}</span>
-          <span class="muted small">Vedi solo ciò che funziona in questa istanza.</span>
+          <span class="muted small">{t('Vedi solo ciò che funziona in questa istanza.')}</span>
         {:else}
-          <span class="muted small">Scegli un’istanza per vedere solo i contenuti compatibili e installarli con un clic.</span>
+          <span class="muted small">{t('Scegli un’istanza per vedere solo i contenuti compatibili e installarli con un clic.')}</span>
         {/if}
       </div>
     {/if}
 
     <label class="search">
       <Icon name="search" size={18} />
-      <span class="visually-hidden">Cerca su Modrinth</span>
-      <input id="explore-search" type="search" placeholder="Cerca {kindLabel(ex.kind).toLowerCase()}…" bind:value={ex.text} />
+      <span class="visually-hidden">{t('Cerca su Modrinth')}</span>
+      <input id="explore-search" type="search" placeholder={t('Cerca {tipo}…', { tipo: kindLabel(ex.kind).toLowerCase() })} bind:value={ex.text} />
     </label>
 
     <div class="bar-row">
-      <h2 class="count">{kindLabel(ex.kind)} <span class="muted small">{loading && !hits.length ? 'ricerca…' : `${compact(total)} risultati`}</span></h2>
+      <h2 class="count">{kindLabel(ex.kind)} <span class="muted small">{loading && !hits.length ? t('ricerca…') : t('{n} risultati', { n: compact(total) })}</span></h2>
       <div class="tools">
-        <label><span class="visually-hidden">Ordina</span>
+        <label><span class="visually-hidden">{t('Ordina')}</span>
           <select id="explore-sort" class="input sort" bind:value={ex.sort}>
-            <option value="relevance">Rilevanza</option>
-            <option value="downloads">Download</option>
-            <option value="updated">Aggiornati di recente</option>
+            <option value="relevance">{t('Rilevanza')}</option>
+            <option value="downloads">{t('Download')}</option>
+            <option value="updated">{t('Aggiornati di recente')}</option>
           </select>
         </label>
-        <div class="seg" role="group" aria-label="Vista">
-          <button class:on={ex.layout === 'grid'} aria-pressed={ex.layout === 'grid'} aria-label="Griglia" onclick={() => (ex.layout = 'grid')}><Icon name="library" size={16} /></button>
-          <button class:on={ex.layout === 'list'} aria-pressed={ex.layout === 'list'} aria-label="Elenco" onclick={() => (ex.layout = 'list')}><Icon name="list" size={16} /></button>
+        <div class="seg" role="group" aria-label={t('Vista')}>
+          <button class:on={ex.layout === 'grid'} aria-pressed={ex.layout === 'grid'} aria-label={t('Griglia')} onclick={() => (ex.layout = 'grid')}><Icon name="library" size={16} /></button>
+          <button class:on={ex.layout === 'list'} aria-pressed={ex.layout === 'list'} aria-label={t('Elenco')} onclick={() => (ex.layout = 'list')}><Icon name="list" size={16} /></button>
         </div>
       </div>
     </div>
 
     {#if blocked}<p class="note warn">{blocked}</p>{/if}
-    {#if failed}<p class="error-box" role="alert">Modrinth non risponde: {failed}</p>{/if}
+    {#if failed}<p class="error-box" role="alert">{t('Modrinth non risponde: {errore}', { errore: failed })}</p>{/if}
 
     <div class="results" class:grid={ex.layout === 'grid'}>
       {#each hits as hit, i (hit.id)}
         <article class="card res enter" style:--i={i % 20}>
           {#if ex.layout === 'grid'}
-            <button class="cover" style:background={cover(hit)} aria-label="Apri {hit.title}" onclick={() => app.openProject(hit.id, ex.kind)}>
+            <button class="cover" style:background={cover(hit)} aria-label={t('Apri {titolo}', { titolo: hit.title })} onclick={() => app.openProject(hit.id, ex.kind)}>
               {#if hit.image}<img src={hit.image} alt="" loading="lazy" />{/if}
               <span class="cover-icon"><ProjectIcon url={hit.iconUrl} name={hit.title} size={52} /></span>
             </button>
@@ -171,40 +172,40 @@
               </span>
             </button>
             <div class="foot">
-              <span class="by">di {hit.author} · {relativeIso(hit.updated).toLowerCase()}</span>
+              <span class="by">{t('di {autore}', { autore: hit.author })} · {relativeIso(hit.updated).toLowerCase()}</span>
               <span class="action">
                 {#if installing === hit.id}
                   <ProgressBar {progress} label={false} />
                 {:else if installed.has(hit.id)}
-                  <span class="done"><Icon name="check" size={16} /> Installato</span>
+                  <span class="done"><Icon name="check" size={16} /> {t('Installato')}</span>
                 {:else if isPack}
-                  <button class="btn primary small" disabled={!!installing} onclick={() => install(hit)}><Icon name="download" size={15} /> Installa</button>
+                  <button class="btn primary small" disabled={!!installing} onclick={() => install(hit)}><Icon name="download" size={15} /> {t('Installa')}</button>
                 {:else if ex.kind === 'datapack' || !target}
-                  <button class="btn small" onclick={() => app.openProject(hit.id, ex.kind)}>Dettagli</button>
+                  <button class="btn small" onclick={() => app.openProject(hit.id, ex.kind)}>{t('Dettagli')}</button>
                 {:else}
-                  <button class="btn primary small" disabled={!!installing || !!blocked} onclick={() => install(hit)}><Icon name="download" size={15} /> Installa</button>
+                  <button class="btn primary small" disabled={!!installing || !!blocked} onclick={() => install(hit)}><Icon name="download" size={15} /> {t('Installa')}</button>
                 {/if}
               </span>
             </div>
           </div>
         </article>
       {:else}
-        {#if !loading && !failed}<p class="muted">Nessun risultato{ex.text.trim() ? ` per “${ex.text.trim()}”` : ''}.</p>{/if}
+        {#if !loading && !failed}<p class="muted">{ex.text.trim() ? t('Nessun risultato per “{testo}”.', { testo: ex.text.trim() }) : t('Nessun risultato.')}</p>{/if}
       {/each}
     </div>
 
     {#if loading && hits.length}
-      <p class="muted center">Ricerca su Modrinth…</p>
+      <p class="muted center">{t('Ricerca su Modrinth…')}</p>
     {:else if hits.length < total}
-      <button class="btn more" onclick={() => load(hits.length)}>Mostra altri</button>
+      <button class="btn more" onclick={() => load(hits.length)}>{t('Mostra altri')}</button>
     {/if}
   </div>
 
-  <aside class="filters" aria-label="Filtri">
-    <h2 class="filters-title"><Icon name="filter" size={16} /> Filtri</h2>
+  <aside class="filters" aria-label={t('Filtri')}>
+    <h2 class="filters-title"><Icon name="filter" size={16} /> {t('Filtri')}</h2>
 
     <section>
-      <h3 class="label">Tipo di contenuto</h3>
+      <h3 class="label">{t('Tipo di contenuto')}</h3>
       <div class="chips">
         {#each KINDS as k (k.kind)}
           <button class="chip" class:on={ex.kind === k.kind} aria-pressed={ex.kind === k.kind} onclick={() => pickKind(k.kind)}>{k.label}</button>
@@ -213,12 +214,12 @@
     </section>
 
     <section>
-      <h3 class="label">Versione di gioco</h3>
+      <h3 class="label">{t('Versione di gioco')}</h3>
       {#if target}
-        <p class="small muted">{target.version} · dall’istanza “{target.name}”</p>
+        <p class="small muted">{t('{versione} · dall’istanza “{nome}”', { versione: target.version, nome: target.name })}</p>
       {:else}
         <select id="explore-version" class="input" bind:value={ex.gameVersion}>
-          <option value={null}>Qualsiasi versione</option>
+          <option value={null}>{t('Qualsiasi versione')}</option>
           {#each releases as v (v.id)}<option value={v.id}>{v.id}</option>{/each}
         </select>
       {/if}
@@ -228,7 +229,7 @@
       <section>
         <h3 class="label">Mod loader</h3>
         {#if target}
-          <p class="small muted">{loaderLabel(target)} · dall’istanza</p>
+          <p class="small muted">{t('{loader} · dall’istanza', { loader: loaderLabel(target) })}</p>
         {:else}
           <div class="chips">
             {#each LOADERS as [id, label] (id)}
@@ -241,9 +242,9 @@
 
     {#if ex.kind === 'mod'}
       <section>
-        <h3 class="label">Categorie</h3>
+        <h3 class="label">{t('Categorie')}</h3>
         <div class="chips">
-          {#each MOD_CATEGORIES as [id, label] (id)}
+          {#each modCategories() as [id, label] (id)}
             <button class="chip" class:on={ex.category === id} aria-pressed={ex.category === id} onclick={() => (ex.category = ex.category === id ? null : id)}>{label}</button>
           {/each}
         </div>
@@ -259,7 +260,7 @@
   .context select { height: 36px; min-width: 240px; }
   .pill { font-family: var(--mono); font-size: 11px; padding: 3px 8px; border-radius: 6px; background: var(--surface-2); color: var(--text-2); }
   .note { margin: 0; padding: 12px 14px; border-radius: 12px; }
-  .note.warn { background: color-mix(in srgb, #e5a13a 14%, transparent); color: #f3c98a; }
+  .note.warn { background: color-mix(in srgb, #e5a13a 14%, transparent); color: var(--warn-text); }
   .search { display: flex; align-items: center; gap: 10px; height: 50px; padding: 0 16px; border-radius: 12px; border: 1px solid var(--line-strong); background: var(--panel); color: var(--muted); }
   .search:focus-within { border-color: var(--accent-line); }
   .search input { flex: 1; min-width: 0; height: 100%; border: 0; background: transparent; outline: none; font-size: 15px; }
@@ -288,7 +289,7 @@
   .foot { margin-top: auto; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
   .by { font-size: 12px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .action { flex: none; display: flex; justify-content: flex-end; min-width: 110px; }
-  .done { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: #7ee0ad; }
+  .done { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--success-text); }
   .more { align-self: center; }
   .center { text-align: center; }
   .filters { flex: 0 0 280px; align-self: stretch; border-left: 1px solid var(--line); background: var(--panel); padding: 22px 18px; display: flex; flex-direction: column; gap: 22px; }

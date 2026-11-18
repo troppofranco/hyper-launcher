@@ -2,6 +2,7 @@
   import { api, type PlaySession } from '../lib/api';
   import { app } from '../lib/store.svelte';
   import { playtime } from '../lib/format';
+  import { t, locale } from '../lib/i18n.svelte';
 
   // Tempo di gioco degli ultimi 7 giorni, giorno per giorno (fuso orario
   // locale), sommando tutte le istanze. Una partita a cavallo della
@@ -20,8 +21,8 @@
 
   $effect(() => {
     const timer = setInterval(() => {
-      const t = startOfToday();
-      if (t !== today) today = t;
+      const now = startOfToday();
+      if (now !== today) today = now;
     }, 60_000);
     return () => clearInterval(timer);
   });
@@ -41,8 +42,8 @@
       const from = start.getTime() / 1000;
       const to = end.getTime() / 1000;
       const secs = sessions.reduce((sum, s) => sum + Math.max(0, Math.min(s.end, to) - Math.max(s.start, from)), 0);
-      const weekday = start.toLocaleDateString('it-IT', { weekday: 'short' }).replace('.', '');
-      return { label: i === DAYS - 1 ? 'Oggi' : weekday[0].toUpperCase() + weekday.slice(1), secs };
+      const weekday = start.toLocaleDateString(locale(), { weekday: 'short' }).replace('.', '');
+      return { label: i === DAYS - 1 ? t('Oggi') : weekday[0].toUpperCase() + weekday.slice(1), secs };
     });
   });
 
@@ -61,14 +62,14 @@
   const peak = $derived(days.findIndex((d) => d.secs === max && d.secs > 0));
 </script>
 
-<section class="card week" aria-label="Tempo di gioco degli ultimi 7 giorni">
+<section class="card week" aria-label={t('Tempo di gioco degli ultimi 7 giorni')}>
   <div class="head">
-    {#if showTitle}<h2 class="section-title">Il tuo tempo di gioco</h2>{/if}
+    {#if showTitle}<h2 class="section-title">{t('Il tuo tempo di gioco')}</h2>{/if}
     <div class="total">{playtime(total)}</div>
-    <div class="muted small">Ultimi 7 giorni</div>
+    <div class="muted small">{t('Ultimi 7 giorni')}</div>
   </div>
 
-  <div class="chart" role="img" aria-label="Tempo di gioco per giorno: {days.map((d) => `${d.label} ${playtime(d.secs)}`).join(', ')}">
+  <div class="chart" role="img" aria-label={t('Tempo di gioco per giorno: {giorni}', { giorni: days.map((d) => `${d.label} ${playtime(d.secs)}`).join(', ') })}>
     {#each days as day, i (i)}
       <div class="col">
         <div class="track">
@@ -81,9 +82,9 @@
   </div>
 
   <div class="stats">
-    <div><span class="value">{playtime(Math.round(average))}</span><span class="muted small">Partita media</span></div>
-    <div><span class="value">{playtime(longest)}</span><span class="muted small">Partita più lunga</span></div>
-    <div><span class="value">{played} su 7</span><span class="muted small">Giorni giocati</span></div>
+    <div><span class="value">{playtime(Math.round(average))}</span><span class="muted small">{t('Partita media')}</span></div>
+    <div><span class="value">{playtime(longest)}</span><span class="muted small">{t('Partita più lunga')}</span></div>
+    <div><span class="value">{t('{n} su 7', { n: played })}</span><span class="muted small">{t('Giorni giocati')}</span></div>
   </div>
 </section>
 

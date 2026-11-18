@@ -1,7 +1,13 @@
+<script lang="ts" module>
+  /** Nomi validi per un account offline (come in Minecraft). */
+  export const VALID_PLAYER_NAME = /^[A-Za-z0-9_]{3,16}$/;
+</script>
+
 <script lang="ts">
   import { api, on, type DeviceCodeEvent } from '../lib/api';
   import { app } from '../lib/store.svelte';
   import Modal from './Modal.svelte';
+  import { t } from '../lib/i18n.svelte';
 
   // Senza client ID il login Microsoft non può funzionare: si parte da Offline.
   const msaReady = $derived(!!app.settings?.msaClientId.trim());
@@ -11,7 +17,7 @@
   let code = $state<DeviceCodeEvent | null>(null);
   let error = $state<string | null>(null);
 
-  const validName = $derived(/^[A-Za-z0-9_]{3,16}$/.test(offlineName));
+  const validName = $derived(VALID_PLAYER_NAME.test(offlineName));
 
   function close() {
     app.addAccountOpen = false;
@@ -26,7 +32,7 @@
       app.accounts = await api.addOfflineAccount(offlineName);
       close();
     } catch (err) {
-      error = String(err);
+      error = t(String(err));
     } finally {
       busy = false;
     }
@@ -41,7 +47,7 @@
       app.accounts = await api.addMicrosoftAccount();
       close();
     } catch (err) {
-      error = String(err);
+      error = t(String(err));
     } finally {
       unlisten();
       busy = false;
@@ -50,32 +56,32 @@
   }
 </script>
 
-<Modal title="Aggiungi account" onclose={close} width={520}>
+<Modal title={t('Aggiungi account')} onclose={close} width={520}>
   <div class="tabs" role="tablist">
     <button role="tab" aria-selected={tab === 'microsoft'} class:on={tab === 'microsoft'} disabled={busy} onclick={() => (tab = 'microsoft')}>Microsoft</button>
-    <button role="tab" aria-selected={tab === 'offline'} class:on={tab === 'offline'} disabled={busy} onclick={() => (tab = 'offline')}>Offline</button>
+    <button role="tab" aria-selected={tab === 'offline'} class:on={tab === 'offline'} disabled={busy} onclick={() => (tab = 'offline')}>{t('Offline')}</button>
   </div>
 
   {#if tab === 'microsoft'}
-    <p class="muted">Accedi con l'account Microsoft che possiede Minecraft: Java Edition. I token restano solo nel portachiavi di Windows.</p>
+    <p class="muted">{t('Accedi con l’account Microsoft che possiede Minecraft: Java Edition. I token restano solo nel portachiavi di Windows.')}</p>
     {#if code}
       <div class="code-box">
-        <span class="label">Codice</span>
+        <span class="label">{t('Codice')}</span>
         <span class="code">{code.userCode}</span>
-        <span class="muted">Si è aperta la pagina <button class="link" onclick={() => code && api.openUrl(code.verificationUri)}>{code.verificationUri}</button>: inserisci il codice e conferma. In attesa…</span>
+        <span class="muted">{t('Si è aperta la pagina')} <button class="link" onclick={() => code && api.openUrl(code.verificationUri)}>{code.verificationUri}</button>{t(': inserisci il codice e conferma. In attesa…')}</span>
       </div>
     {/if}
     {#if !msaReady}
-      <p class="notice">Il login Microsoft non è ancora disponibile in questa versione. Per ora usa un account <button class="link" onclick={() => (tab = 'offline')}>offline</button>.</p>
+      <p class="notice">{t('Il login Microsoft non è ancora disponibile in questa versione. Per ora usa un account')} <button class="link" onclick={() => (tab = 'offline')}>{t('offline')}</button>.</p>
     {/if}
-    <button class="btn primary" disabled={busy || !msaReady} onclick={loginMicrosoft}>{busy ? 'In attesa della conferma…' : 'Accedi con Microsoft'}</button>
+    <button class="btn primary" disabled={busy || !msaReady} onclick={loginMicrosoft}>{busy ? t('In attesa della conferma…') : t('Accedi con Microsoft')}</button>
   {:else}
     <form onsubmit={addOffline} class="offline">
-      <label class="field">Nome giocatore
+      <label class="field">{t('Nome giocatore')}
         <input class="input" bind:value={offlineName} maxlength="16" placeholder="Steve" autocomplete="off" />
       </label>
-      <span class="muted small">3–16 caratteri: lettere, numeri e _. Gli account offline funzionano solo in singolo giocatore e sui server in modalità offline.</span>
-      <button class="btn primary" type="submit" disabled={busy || !validName}>Aggiungi</button>
+      <span class="muted small">{t('3–16 caratteri: lettere, numeri e _. Gli account offline funzionano solo in singolo giocatore e sui server in modalità offline.')}</span>
+      <button class="btn primary" type="submit" disabled={busy || !validName}>{t('Aggiungi')}</button>
     </form>
   {/if}
 

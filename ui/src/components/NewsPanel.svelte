@@ -2,10 +2,11 @@
   import { api } from '../lib/api';
   import { app } from '../lib/store.svelte';
   import { isoDate } from '../lib/format';
+  import { t } from '../lib/i18n.svelte';
 </script>
 
-<aside class="news scroll" aria-label="Notizie Minecraft">
-  <h2 class="label">Notizie Minecraft</h2>
+<aside class="news scroll" aria-label={t('Notizie Minecraft')}>
+  <h2 class="label">{t('Notizie Minecraft')}</h2>
   {#each app.news as n, i (n.url + n.title)}
     <button class="item enter" style:--i={i} onclick={() => api.openUrl(n.url)}>
       {#if n.image}
@@ -19,12 +20,12 @@
       </span>
     </button>
   {:else}
-    <p class="muted">Notizie non disponibili offline.</p>
+    <p class="muted">{t('Notizie non disponibili offline.')}</p>
   {/each}
 </aside>
 
 <style>
-  .news { flex: 0 0 300px; background: var(--panel); border-left: 1px solid #1f232c; padding: 20px 16px; display: flex; flex-direction: column; gap: 6px; }
+  .news { flex: 0 0 300px; background: var(--panel); border-left: 1px solid var(--line); padding: 20px 16px; display: flex; flex-direction: column; gap: 6px; }
   h2 { margin: 0 4px 8px; font-weight: 600; }
   .item { display: flex; gap: 12px; align-items: center; text-align: left; padding: 8px; border-radius: 10px; border: 0; background: transparent; }
   .item:hover { background: var(--surface-2); }

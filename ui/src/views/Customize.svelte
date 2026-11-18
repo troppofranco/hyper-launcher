@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, type Skin, type Skins } from '../lib/api';
   import { app } from '../lib/store.svelte';
+  import { t } from '../lib/i18n.svelte';
   import { pickFile, readSkin, skinFront } from '../lib/image';
   import Icon from '../components/Icon.svelte';
   import Modal from '../components/Modal.svelte';
@@ -68,7 +69,7 @@
     pending = null;
     await run(() => api.addSkin(p.name, p.image, p.slim));
     preview = data?.skins.find((s) => s.id === data?.selected) ?? preview;
-    app.info_(`Skin “${p.name}” aggiunta e scelta.`);
+    app.info_(t('Skin “{nome}” aggiunta e scelta.', { nome: p.name }));
   }
 
   /** Una skin predefinita diventa tua: copiata nella libreria e scelta. */
@@ -96,70 +97,70 @@
 <div class="page custom">
   <div class="page-head enter">
     <div>
-      <h1 class="page-title">Personalizzazione</h1>
-      <p class="muted">Scegli la skin del tuo personaggio e guardala da ogni lato.</p>
+      <h1 class="page-title">{t('Personalizzazione')}</h1>
+      <p class="muted">{t('Scegli la skin del tuo personaggio e guardala da ogni lato.')}</p>
     </div>
   </div>
 
   <div class="layout">
-    <section class="card stage enter" style:--i={1} aria-label="Anteprima">
+    <section class="card stage enter" style:--i={1} aria-label={t('Anteprima')}>
       <div class="glow"></div>
       <SkinViewer skin={preview?.image ?? null} slim={preview?.slim ?? false} />
       <div class="stage-info">
-        <span class="stage-name">{preview?.name ?? 'Nessuna skin'}</span>
-        <span class="muted small">{preview ? (preview.slim ? 'Braccia sottili' : 'Braccia classiche') : ''}</span>
+        <span class="stage-name">{preview?.name ?? t('Nessuna skin')}</span>
+        <span class="muted small">{preview ? (preview.slim ? t('Braccia sottili') : t('Braccia classiche')) : ''}</span>
       </div>
       <div class="stage-actions">
         {#if preview && isLibrary}
           {#if data?.selected === preview.id}
-            <span class="in-use"><Icon name="check" size={16} /> In uso</span>
+            <span class="in-use"><Icon name="check" size={16} /> {t('In uso')}</span>
           {:else}
-            <button class="btn primary" disabled={busy} onclick={() => preview && choose(preview)}>Usa questa skin</button>
+            <button class="btn primary" disabled={busy} onclick={() => preview && choose(preview)}>{t('Usa questa skin')}</button>
           {/if}
         {:else if preview}
-          <button class="btn primary" disabled={busy} onclick={() => preview && useDefault(preview)}>Usa questa skin</button>
+          <button class="btn primary" disabled={busy} onclick={() => preview && useDefault(preview)}>{t('Usa questa skin')}</button>
         {/if}
       </div>
       {#if data && !data.offline}
-        <p class="note">Con un account Microsoft in gioco vedi la skin del tuo profilo Minecraft: qui puoi provarne altre in anteprima.</p>
+        <p class="note">{t('Con un account Microsoft in gioco vedi la skin del tuo profilo Minecraft: qui puoi provarne altre in anteprima.')}</p>
       {:else if data}
-        <p class="note">Con l’account offline la skin si vede nelle tue partite tramite un resource pack che il launcher attiva da solo all’avvio.</p>
+        <p class="note">{t('Con l’account offline la skin si vede nelle tue partite tramite un resource pack che il launcher attiva da solo all’avvio.')}</p>
       {/if}
     </section>
 
     <div class="side">
       <section class="enter" style:--i={2} aria-labelledby="mine">
-        <h2 id="mine" class="section-title">Le tue skin <span class="muted small">{data?.skins.length ?? 0}</span></h2>
+        <h2 id="mine" class="section-title">{t('Le tue skin')} <span class="muted small">{data?.skins.length ?? 0}</span></h2>
         <div class="grid">
           <button class="tile add" onclick={addFromPc} disabled={busy}>
             <Icon name="plus" size={22} />
-            <span>Aggiungi skin</span>
+            <span>{t('Aggiungi skin')}</span>
           </button>
           {#each data?.skins ?? [] as s, i (s.id)}
             <div class="tile-wrap enter" style:--i={i + 3}>
-              <button class="tile" class:selected={data?.selected === s.id} class:previewing={preview?.id === s.id} onclick={() => (preview = s)} ondblclick={() => choose(s)} title="Clic: anteprima · doppio clic: usa">
+              <button class="tile" class:selected={data?.selected === s.id} class:previewing={preview?.id === s.id} onclick={() => (preview = s)} ondblclick={() => choose(s)} title={t('Clic: anteprima · doppio clic: usa')}>
                 {#if fronts[s.id]}<img src={fronts[s.id]} alt="" />{/if}
                 {#if data?.selected === s.id}<span class="dot"><Icon name="check" size={12} /></span>{/if}
               </button>
               <span class="tile-name">{s.name}</span>
-              <button class="tile-x" aria-label="Rimuovi {s.name}" onclick={() => remove(s)}><Icon name="trash" size={14} /></button>
+              <button class="tile-x" aria-label={t('Rimuovi {nome}', { nome: s.name })} onclick={() => remove(s)}><Icon name="trash" size={14} /></button>
             </div>
           {/each}
         </div>
         {#if data?.selected}
-          <button class="link" onclick={() => choose(null)}>Torna alla skin predefinita del gioco</button>
+          <button class="link" onclick={() => choose(null)}>{t('Torna alla skin predefinita del gioco')}</button>
         {/if}
       </section>
 
       <section class="enter" style:--i={4} aria-labelledby="defaults">
         <button id="defaults" class="section-title toggle" aria-expanded={defaultsOpen} onclick={() => (defaultsOpen = !defaultsOpen)}>
-          <span class="chev" class:open={defaultsOpen}><Icon name="back" size={14} /></span> Skin predefinite
+          <span class="chev" class:open={defaultsOpen}><Icon name="back" size={14} /></span> {t('Skin predefinite')}
         </button>
         {#if defaultsOpen}
           {#if defaults === null}
-            <p class="muted small">Caricamento…</p>
+            <p class="muted small">{t('Caricamento…')}</p>
           {:else if !defaults.length}
-            <p class="muted small">Le skin predefinite si leggono dal gioco: compariranno dopo aver avviato una qualsiasi istanza recente.</p>
+            <p class="muted small">{t('Le skin predefinite si leggono dal gioco: compariranno dopo aver avviato una qualsiasi istanza recente.')}</p>
           {:else}
             <div class="grid">
               {#each defaults as s, i (s.id)}
@@ -179,24 +180,24 @@
 </div>
 
 {#if pending}
-  <Modal title="Nuova skin" onclose={() => (pending = null)} width={440}>
+  <Modal title={t('Nuova skin')} onclose={() => (pending = null)} width={440}>
     <form class="add-form" onsubmit={savePending}>
       <div class="add-preview">
         <SkinViewer skin={pending.image} slim={pending.slim} width={160} height={220} />
       </div>
-      <label class="field">Nome
+      <label class="field">{t('Nome')}
         <input class="input" bind:value={pending.name} maxlength="40" />
       </label>
       <fieldset>
-        <legend class="field">Modello</legend>
+        <legend class="field">{t('Modello')}</legend>
         <div class="models">
-          <button type="button" class:on={!pending.slim} onclick={() => pending && (pending.slim = false)}>Braccia classiche</button>
-          <button type="button" class:on={pending.slim} onclick={() => pending && (pending.slim = true)}>Braccia sottili</button>
+          <button type="button" class:on={!pending.slim} onclick={() => pending && (pending.slim = false)}>{t('Braccia classiche')}</button>
+          <button type="button" class:on={pending.slim} onclick={() => pending && (pending.slim = true)}>{t('Braccia sottili')}</button>
         </div>
       </fieldset>
       <div class="actions">
-        <button type="button" class="btn" onclick={() => (pending = null)}>Annulla</button>
-        <button type="submit" class="btn primary">Salva e usa</button>
+        <button type="button" class="btn" onclick={() => (pending = null)}>{t('Annulla')}</button>
+        <button type="submit" class="btn primary">{t('Salva e usa')}</button>
       </div>
     </form>
   </Modal>
@@ -210,7 +211,7 @@
   .stage-info { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; }
   .stage-name { font-family: var(--display); font-size: 20px; font-weight: 600; }
   .stage-actions { position: relative; min-height: 44px; display: flex; align-items: center; }
-  .in-use { display: inline-flex; align-items: center; gap: 6px; color: #7ee0ad; font-weight: 600; }
+  .in-use { display: inline-flex; align-items: center; gap: 6px; color: var(--success-text); font-weight: 600; }
   .note { position: relative; margin: 0; font-size: 12px; color: var(--muted); text-align: center; line-height: 1.5; }
   .side { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
   .section-title { font-size: 16px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
@@ -231,7 +232,7 @@
   .tile-name { font-size: 12px; color: var(--text-2); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .tile-x { position: absolute; top: 6px; right: 6px; width: 26px; height: 26px; border-radius: 7px; border: 0; background: var(--bg-deep); color: var(--muted); display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity .15s; }
   .tile-wrap:hover .tile-x { opacity: 1; }
-  .tile-x:hover { color: #ff8a8e; }
+  .tile-x:hover { color: var(--danger-text); }
   .link { margin-top: 10px; background: none; border: 0; padding: 0; color: var(--accent-line); font-size: 13px; }
   .add-form { display: flex; flex-direction: column; gap: 14px; }
   .add-preview { display: flex; justify-content: center; background: var(--panel); border-radius: 12px; }

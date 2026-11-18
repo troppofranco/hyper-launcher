@@ -118,7 +118,7 @@ async fn run(app: &AppHandle, name: &str) -> anyhow::Result<Option<i32>> {
             },
         );
     };
-    let prepared = hyper_instances::prepare_launch(
+    let mut prepared = hyper_instances::prepare_launch(
         &installer,
         &instance,
         &session,
@@ -128,6 +128,7 @@ async fn run(app: &AppHandle, name: &str) -> anyhow::Result<Option<i32>> {
     )
     .await?;
 
+    prepared.command.hide_console = !config.show_console;
     let game = prepared.spawn()?;
     emit_state(app, name, "running");
     if config.minimize_on_launch

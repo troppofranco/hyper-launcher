@@ -1,5 +1,6 @@
 // Etichette e regole condivise dalle schermate del catalogo.
 
+import { t } from './i18n.svelte';
 import type { ContentDirName, ContentKind, Instance, LoaderKind } from './api';
 
 export const KINDS: { kind: ContentKind; label: string }[] = [
@@ -15,17 +16,19 @@ export function kindLabel(kind: ContentKind | string): string {
 }
 
 /** Categorie Modrinth più usate per le mod, in italiano. */
-export const MOD_CATEGORIES: [string, string][] = [
-  ['optimization', 'Ottimizzazione'],
-  ['utility', 'Utilità'],
-  ['decoration', 'Decorazione'],
-  ['adventure', 'Avventura'],
-  ['technology', 'Tecnologia'],
-  ['worldgen', 'Generazione mondi'],
-  ['magic', 'Magia'],
-  ['storage', 'Inventario'],
-  ['library', 'Librerie'],
-];
+export function modCategories(): [string, string][] {
+  return [
+    ['optimization', t('Ottimizzazione')],
+    ['utility', t('Utilità')],
+    ['decoration', t('Decorazione')],
+    ['adventure', t('Avventura')],
+    ['technology', t('Tecnologia')],
+    ['worldgen', t('Generazione mondi')],
+    ['magic', t('Magia')],
+    ['storage', t('Inventario')],
+    ['library', t('Librerie')],
+  ];
+}
 
 /** Cartella dell'istanza per un tipo di contenuto (data pack e modpack no). */
 export function dirOf(kind: ContentKind): ContentDirName | null {
@@ -35,9 +38,9 @@ export function dirOf(kind: ContentKind): ContentDirName | null {
 /** Perché questo contenuto non si può installare nell'istanza (o null). */
 export function incompatibility(kind: ContentKind, instance: Instance | null): string | null {
   if (!instance) return null;
-  if (kind === 'mod' && !instance.loader) return 'Questa istanza è Vanilla: per le mod serve un loader (Fabric, Quilt, NeoForge o Forge).';
+  if (kind === 'mod' && !instance.loader) return t('Questa istanza è Vanilla: per le mod serve un loader (Fabric, Quilt, NeoForge o Forge).');
   if (kind === 'shader' && (!instance.loader || instance.loader.kind === 'forge'))
-    return 'Gli shader funzionano con Iris, disponibile per Fabric, Quilt e NeoForge.';
+    return t('Gli shader funzionano con Iris, disponibile per Fabric, Quilt e NeoForge.');
   return null;
 }
 

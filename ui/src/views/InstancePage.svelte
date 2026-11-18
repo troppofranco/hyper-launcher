@@ -9,6 +9,7 @@
   import Modal from '../components/Modal.svelte';
   import ContentList from '../components/ContentList.svelte';
   import { pickFile, squarePng } from '../lib/image';
+  import { t } from '../lib/i18n.svelte';
 
   let { name }: { name: string } = $props();
 
@@ -31,7 +32,7 @@
   const inst = $derived(app.instances.find((i) => i.name === name) ?? null);
   const launch = $derived(app.launches[name]);
   const log = $derived(app.logs[name] ?? []);
-  const status = $derived(launch?.phase === 'running' ? 'In gioco' : launch ? 'Installazione' : 'Pronta');
+  const status = $derived(launch?.phase === 'running' ? t('In gioco') : launch ? t('Installazione') : t('Pronta'));
 
   // Ricarica i dati della scheda quando cambia istanza o scheda.
   $effect(() => {
@@ -82,7 +83,7 @@
     exporting = true;
     try {
       const res = await api.packExport(name);
-      if (res) app.info_(`Modpack salvato in ${res.path} (${res.linked} file da Modrinth, ${res.bundled} inclusi).`);
+      if (res) app.info_(t('Modpack salvato in {path} ({linked} file da Modrinth, {bundled} inclusi).', { path: res.path, linked: res.linked, bundled: res.bundled }));
     } catch (e) {
       app.error(e);
     } finally {
@@ -101,7 +102,7 @@
         syncSettings,
       });
       await app.refreshInstances();
-      app.info_('Impostazioni dell’istanza salvate.');
+      app.info_(t('Impostazioni dell’istanza salvate.'));
     } catch (err) {
       app.error(err);
     } finally {
@@ -121,29 +122,29 @@
   }
 
   const tabs = $derived<[Tab, string][]>([
-    ...(inst?.loader ? [['mods', modCount === null ? 'Mod' : `Mod · ${modCount}`] as [Tab, string]] : []),
-    ['resourcepacks', 'Resource pack'],
-    ...(inst?.loader ? [['shaderpacks', 'Shader'] as [Tab, string]] : []),
-    ['worlds', 'Mondi'],
-    ['console', 'Console'],
-    ['settings', 'Impostazioni istanza'],
+    ...(inst?.loader ? [['mods', modCount === null ? t('Mod') : t('Mod · {n}', { n: modCount })] as [Tab, string]] : []),
+    ['resourcepacks', t('Resource pack')],
+    ...(inst?.loader ? [['shaderpacks', t('Shader')] as [Tab, string]] : []),
+    ['worlds', t('Mondi')],
+    ['console', t('Console')],
+    ['settings', t('Impostazioni istanza')],
   ]);
 </script>
 
 {#if !inst}
-  <div class="page"><p class="muted">Istanza non trovata.</p></div>
+  <div class="page"><p class="muted">{t('Istanza non trovata.')}</p></div>
 {:else}
   <div class="page">
-    <button class="back" onclick={() => app.go({ view: 'library' })}><Icon name="back" size={16} /> Libreria</button>
+    <button class="back" onclick={() => app.go({ view: 'library' })}><Icon name="back" size={16} /> {t('Libreria')}</button>
 
     <section class="card hero">
       <div class="hero-main">
         <div class="icon-pick">
-          <button class="icon-btn-pick" aria-label="Cambia immagine dell’istanza" title="Cambia immagine" onclick={pickIcon}>
+          <button class="icon-btn-pick" aria-label={t('Cambia immagine dell’istanza')} title={t('Cambia immagine')} onclick={pickIcon}>
             <InstanceIcon name={inst.name} icon={inst.icon} size={64} />
             <span class="icon-overlay"><Icon name="image" size={20} /></span>
           </button>
-          {#if inst.icon}<button class="icon-reset" aria-label="Togli immagine" title="Togli immagine" onclick={() => setIcon(null)}><Icon name="close" size={12} /></button>{/if}
+          {#if inst.icon}<button class="icon-reset" aria-label={t('Togli immagine')} title={t('Togli immagine')} onclick={() => setIcon(null)}><Icon name="close" size={12} /></button>{/if}
         </div>
         <div class="title">
           <div class="sub">
@@ -152,17 +153,17 @@
           </div>
           <h1 class="page-title">{inst.name}</h1>
         </div>
-        <button class="btn" disabled={exporting} onclick={exportPack}><Icon name="download" size={16} /> Esporta .mrpack</button>
+        <button class="btn" disabled={exporting} onclick={exportPack}><Icon name="download" size={16} /> {t('Esporta .mrpack')}</button>
         <PlayButton name={inst.name} size="large" />
       </div>
       <div class="facts">
-        <div><span class="label">Stato</span><span class="value">{status}</span></div>
-        <div><span class="label">Ultima partita</span><span class="value">{relativeDay(inst.lastPlayed)}</span></div>
-        <div><span class="label">Tempo di gioco</span><span class="value">{playtime(inst.playtimeSecs)}</span></div>
+        <div><span class="label">{t('Stato')}</span><span class="value">{status}</span></div>
+        <div><span class="label">{t('Ultima partita')}</span><span class="value">{relativeDay(inst.lastPlayed)}</span></div>
+        <div><span class="label">{t('Tempo di gioco')}</span><span class="value">{playtime(inst.playtimeSecs)}</span></div>
       </div>
     </section>
 
-    <div class="tabs" role="tablist" aria-label="Contenuto istanza">
+    <div class="tabs" role="tablist" aria-label={t('Contenuto istanza')}>
       {#each tabs as [id, label] (id)}
         <button role="tab" style="transition: color .2s, border-color .2s" aria-selected={tab === id} class:on={tab === id} onclick={() => (tab = id)}>{label}</button>
       {/each}
@@ -175,46 +176,46 @@
     {:else if tab === 'shaderpacks'}
       <ContentList instance={name} kind="shader" />
     {:else if tab === 'worlds'}
-      <div class="tools"><button class="btn" onclick={() => api.openFolder(name, 'saves')}><Icon name="folder" size={16} /> Apri cartella mondi</button></div>
+      <div class="tools"><button class="btn" onclick={() => api.openFolder(name, 'saves')}><Icon name="folder" size={16} /> {t('Apri cartella mondi')}</button></div>
       <div class="worlds">
         {#each worlds as w (w.name)}
-          <div class="card world"><span class="mod-name">{w.name}</span><span class="muted small">Ultimo accesso: {relativeDay(w.lastPlayed)}</span></div>
+          <div class="card world"><span class="mod-name">{w.name}</span><span class="muted small">{t('Ultimo accesso: {when}', { when: relativeDay(w.lastPlayed) })}</span></div>
         {:else}
-          <p class="muted">Nessun mondo ancora: crealo dal gioco.</p>
+          <p class="muted">{t('Nessun mondo ancora: crealo dal gioco.')}</p>
         {/each}
       </div>
     {:else if tab === 'console'}
       <!-- Una riga per elemento: a ogni nuova riga si aggiunge un nodo invece
            di ricostruire tutto il testo. -->
       <div class="console scroll" role="log">
-        {#each log as line (line.id)}<div>{line.text}</div>{:else}<div class="muted">La console mostra il log del gioco quando l’istanza è avviata.</div>{/each}
+        {#each log as line (line.id)}<div>{line.text}</div>{:else}<div class="muted">{t('La console mostra il log del gioco quando l’istanza è avviata.')}</div>{/each}
       </div>
     {:else}
       <form class="card form" onsubmit={save}>
         <div class="setting">
-          <div><div class="mod-name">Memoria dedicata</div><div class="muted small">Se spento usa la memoria predefinita delle impostazioni ({Math.round((app.settings?.defaultMemoryMb ?? 4096) / 1024)} GB).</div></div>
-          <button type="button" class="switch" role="switch" aria-checked={customMemory} aria-label="Memoria dedicata" onclick={() => (customMemory = !customMemory)}></button>
+          <div><div class="mod-name">{t('Memoria dedicata')}</div><div class="muted small">{t('Se spento usa la memoria predefinita delle impostazioni ({gb} GB).', { gb: Math.round((app.settings?.defaultMemoryMb ?? 4096) / 1024) })}</div></div>
+          <button type="button" class="switch" role="switch" aria-checked={customMemory} aria-label={t('Memoria dedicata')} onclick={() => (customMemory = !customMemory)}></button>
         </div>
         {#if customMemory}
-          <label class="field">Memoria massima · {memoryGb} GB
+          <label class="field">{t('Memoria massima · {gb} GB', { gb: memoryGb })}
             <input type="range" min="1" max="32" step="1" bind:value={memoryGb} />
           </label>
         {/if}
         <div class="setting">
-          <div><div class="mod-name">Usa le impostazioni condivise</div><div class="muted small">{app.settings?.sync.enabled ? 'Tasti e impostazioni grafiche sincronizzati con le altre istanze.' : 'La sincronizzazione è spenta: si attiva in Impostazioni → Sincronizzazione.'}</div></div>
-          <button type="button" class="switch" role="switch" aria-checked={syncSettings} aria-label="Usa le impostazioni condivise" onclick={() => (syncSettings = !syncSettings)}></button>
+          <div><div class="mod-name">{t('Usa le impostazioni condivise')}</div><div class="muted small">{app.settings?.sync.enabled ? t('Tasti e impostazioni grafiche sincronizzati con le altre istanze.') : t('La sincronizzazione è spenta: si attiva in Impostazioni → Sincronizzazione.')}</div></div>
+          <button type="button" class="switch" role="switch" aria-checked={syncSettings} aria-label={t('Usa le impostazioni condivise')} onclick={() => (syncSettings = !syncSettings)}></button>
         </div>
-        <label class="field">Java (facoltativo)
-          <input class="input" bind:value={javaPath} placeholder="Vuoto = automatico (runtime ufficiale Mojang)" />
+        <label class="field">{t('Java (facoltativo)')}
+          <input class="input" bind:value={javaPath} placeholder={t('Vuoto = automatico (runtime ufficiale Mojang)')} />
         </label>
-        <label class="field">Argomenti JVM aggiuntivi
-          <input class="input" bind:value={jvmArgs} placeholder="es. -XX:+UseZGC" />
+        <label class="field">{t('Argomenti JVM aggiuntivi')}
+          <input class="input" bind:value={jvmArgs} placeholder={t('es. -XX:+UseZGC')} />
         </label>
         <div class="form-actions">
-          <button type="button" class="btn danger" disabled={!!launch} onclick={() => { deleteConfirm = ''; deleteOpen = true; }}><Icon name="trash" size={16} /> Elimina istanza</button>
+          <button type="button" class="btn danger" disabled={!!launch} onclick={() => { deleteConfirm = ''; deleteOpen = true; }}><Icon name="trash" size={16} /> {t('Elimina istanza')}</button>
           <span class="actions">
-            <button type="button" class="btn" onclick={() => api.openFolder(name, 'game')}><Icon name="folder" size={16} /> Apri cartella</button>
-            <button type="submit" class="btn primary" disabled={saving}>Salva</button>
+            <button type="button" class="btn" onclick={() => api.openFolder(name, 'game')}><Icon name="folder" size={16} /> {t('Apri cartella')}</button>
+            <button type="submit" class="btn primary" disabled={saving}>{t('Salva')}</button>
           </span>
         </div>
       </form>
@@ -222,14 +223,15 @@
   </div>
 
   {#if deleteOpen}
-    <Modal title="Eliminare l’istanza?" onclose={() => (deleteOpen = false)} width={480}>
-      <p class="confirm-text">Verranno cancellati per sempre i mondi, le mod e le impostazioni di <strong>{inst.name}</strong>. Non si può annullare.</p>
-      <label class="field">Scrivi il nome dell’istanza per confermare
+    <Modal title={t('Eliminare l’istanza?')} onclose={() => (deleteOpen = false)} width={480}>
+      {@const [before, after] = t('Verranno cancellati per sempre i mondi, le mod e le impostazioni di {name}. Non si può annullare.').split('{name}')}
+      <p class="confirm-text">{before}<strong>{inst.name}</strong>{after}</p>
+      <label class="field">{t('Scrivi il nome dell’istanza per confermare')}
         <input class="input" bind:value={deleteConfirm} placeholder={inst.name} />
       </label>
       <div class="actions end">
-        <button class="btn" onclick={() => (deleteOpen = false)}>Annulla</button>
-        <button class="btn danger" disabled={deleteConfirm !== inst.name} onclick={remove}>Elimina definitivamente</button>
+        <button class="btn" onclick={() => (deleteOpen = false)}>{t('Annulla')}</button>
+        <button class="btn danger" disabled={deleteConfirm !== inst.name} onclick={remove}>{t('Elimina definitivamente')}</button>
       </div>
     </Modal>
   {/if}
@@ -248,7 +250,7 @@
   .hero-main { display: flex; align-items: center; gap: 18px; padding: 22px; flex-wrap: wrap; }
   .title { flex: 1; min-width: 200px; }
   .sub { display: flex; gap: 8px; font-size: 12px; color: var(--muted); }
-  .loader { color: #e2b97e; }
+  .loader { color: var(--warn-text); }
   .title h1 { margin-top: 4px; }
   .facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--line); }
   .facts div { padding: 14px 22px; display: flex; flex-direction: column; gap: 4px; }

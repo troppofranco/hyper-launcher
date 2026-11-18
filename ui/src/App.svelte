@@ -14,6 +14,8 @@
   import Explore from './views/Explore.svelte';
   import ProjectPage from './views/ProjectPage.svelte';
   import Customize from './views/Customize.svelte';
+  import Onboarding from './components/Onboarding.svelte';
+  import { t } from './lib/i18n.svelte';
   import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import { prefersReducedMotion } from 'svelte/motion';
@@ -39,14 +41,17 @@
 
 <div class="shell">
   <Titlebar />
+  {#if ready && app.settings && !app.settings.setupDone}
+    <Onboarding />
+  {:else}
   <UpdateBanner />
   <div class="body">
     <Sidebar />
     <main class="content scroll">
       {#if failed}
-        <div class="page"><p class="fatal" role="alert">Impossibile avviare il launcher: {failed}</p></div>
+        <div class="page"><p class="fatal" role="alert">{t('Impossibile avviare il launcher:')} {failed}</p></div>
       {:else if !ready}
-        <div class="page"><p class="muted">Caricamento…</p></div>
+        <div class="page"><p class="muted">{t('Caricamento…')}</p></div>
       {:else}
         <!-- Ogni cambio di pagina entra con una breve dissolvenza dal basso. -->
         {#key routeKey}
@@ -72,6 +77,7 @@
     </main>
     {#if app.route.view === 'home' || app.route.view === 'library' || app.route.view === 'instance'}<NewsPanel />{/if}
   </div>
+  {/if}
 </div>
 
 {#if app.newInstanceOpen}<NewInstanceDialog />{/if}
@@ -83,5 +89,5 @@
   .body { flex: 1; display: flex; min-height: 0; }
   .content { flex: 1; min-width: 0; }
   .view { min-height: 100%; }
-  .fatal { color: #ff8a8e; user-select: text; }
+  .fatal { color: var(--danger-text); user-select: text; }
 </style>

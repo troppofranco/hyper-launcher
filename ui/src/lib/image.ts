@@ -1,6 +1,8 @@
 // Scelta di immagini dal PC e preparazione per il backend (tutto nel
 // browser: il backend riceve solo PNG piccoli già pronti).
 
+import { t } from './i18n.svelte';
+
 /** Apre la finestra di scelta file; `null` se l'utente annulla. */
 export function pickFile(accept: string): Promise<File | null> {
   return new Promise((resolve) => {
@@ -17,7 +19,7 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('Immagine non leggibile.'));
+    img.onerror = () => reject(new Error(t('Immagine non leggibile.')));
     img.src = src;
   });
 }
@@ -26,35 +28,31 @@ function readAsDataUrl(file: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error('File non leggibile.'));
+    reader.onerror = () => reject(new Error(t('File non leggibile.')));
     reader.readAsDataURL(file);
   });
 }
 
 /** Ritaglia al centro e ridimensiona a un quadrato `size`×`size` PNG. */
 export async function squarePng(file: File, size = 256): Promise<string> {
-  const url = URL.createObjectURL(file);
-  try {
-    const img = await loadImage(url);
-    const side = Math.min(img.naturalWidth, img.naturalHeight);
-    const canvas = document.createElement('canvas');
-    canvas.width = canvas.height = size;
-    const ctx = canvas.getContext('2d')!;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, size, size);
-    return canvas.toDataURL('image/png');
-  } finally {
-    URL.revokeObjectURL(url);
-  }
+  // Come data: URL e non blob:, che la CSP dell'app non consente nelle immagini.
+  const img = await loadImage(await readAsDataUrl(file));
+  const side = Math.min(img.naturalWidth, img.naturalHeight);
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, size, size);
+  return canvas.toDataURL('image/png');
 }
 
 /** Legge una skin: deve essere un PNG 64×64 (o 64×32, vecchio formato). */
 export async function readSkin(file: File): Promise<string> {
-  if (file.type && file.type !== 'image/png') throw new Error('La skin deve essere un file PNG.');
+  if (file.type && file.type !== 'image/png') throw new Error(t('La skin deve essere un file PNG.'));
   const data = await readAsDataUrl(file);
   const img = await loadImage(data);
   if (img.naturalWidth !== 64 || (img.naturalHeight !== 64 && img.naturalHeight !== 32)) {
-    throw new Error(`Una skin è un PNG 64×64 pixel: questa è ${img.naturalWidth}×${img.naturalHeight}.`);
+    throw new Error(t('Una skin è un PNG 64×64 pixel: questa è {w}×{h}.', { w: img.naturalWidth, h: img.naturalHeight }));
   }
   return img.naturalHeight === 32 ? upgradeLegacy(img) : data;
 }

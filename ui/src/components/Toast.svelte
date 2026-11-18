@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '../lib/i18n.svelte';
   import { app } from '../lib/store.svelte';
   import Icon from './Icon.svelte';
   import { fly } from 'svelte/transition';
@@ -9,15 +10,15 @@
   // non vengono chiusi, così si possono leggere (e copiare) con calma.
   $effect(() => {
     if (app.toast?.kind !== 'info') return;
-    const t = setTimeout(() => (app.toast = null), 4000);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => (app.toast = null), 4000);
+    return () => clearTimeout(timer);
   });
 </script>
 
 {#if app.toast}
   <div class="toast" transition:fly={{ y: 24, duration: prefersReducedMotion.current ? 0 : 260, easing: cubicOut }} class:error={app.toast.kind === 'error'} role={app.toast.kind === 'error' ? 'alert' : 'status'}>
     <span class="text">{app.toast.text}</span>
-    <button aria-label="Chiudi" onclick={() => (app.toast = null)}><Icon name="close" size={16} /></button>
+    <button aria-label={t('Chiudi')} onclick={() => (app.toast = null)}><Icon name="close" size={16} /></button>
   </div>
 {/if}
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '../lib/i18n.svelte';
   // Avanzamento di un download di contenuti ("File 2 di 5"); senza dati
   // mostra una barra quasi vuota con "Preparazione…".
   let { progress, label = true }: { progress: { done: number; total: number } | undefined; label?: boolean } = $props();
@@ -6,7 +7,7 @@
 </script>
 
 <span class="progress">
-  {#if label}<span class="small muted">{progress && progress.total ? `File ${progress.done} di ${progress.total}` : 'Preparazione…'}</span>{/if}
+  {#if label}<span class="small muted">{progress && progress.total ? t('File {fatti} di {totale}', { fatti: progress.done, totale: progress.total }) : t('Preparazione…')}</span>{/if}
   <span class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(percent)}><span style:width="{percent}%"></span></span>
 </span>
 

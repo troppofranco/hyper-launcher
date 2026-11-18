@@ -26,6 +26,9 @@ pub struct LaunchCommand {
     pub program: PathBuf,
     pub args: Vec<String>,
     pub cwd: PathBuf,
+    /// Avvia Java senza la sua finestra di console (Windows). Dall'app
+    /// grafica la console si apre da sola, perché il launcher non ne ha una.
+    pub hide_console: bool,
     /// Valori da non mostrare mai (token della sessione), ovunque compaiano.
     secrets: Vec<String>,
 }
@@ -34,15 +37,20 @@ impl LaunchCommand {
     /// Avvia il gioco con lo stdout catturato (va letto, vedi
     /// [`crate::RunningGame::wait`]) e lo stderr ereditato.
     pub fn spawn(&self) -> Result<Child> {
-        Command::new(&self.program)
+        let mut command = Command::new(&self.program);
+        command
             .args(&self.args)
             .current_dir(&self.cwd)
-            .stdout(std::process::Stdio::piped())
-            .spawn()
-            .map_err(|source| InstanceError::Process {
-                program: self.program.clone(),
-                source,
-            })
+            .stdout(std::process::Stdio::piped());
+        #[cfg(windows)]
+        if self.hide_console {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        }
+        command.spawn().map_err(|source| InstanceError::Process {
+            program: self.program.clone(),
+            source,
+        })
     }
 
     /// Argomenti con i segreti sostituiti da `<redacted>`: l'unica forma
@@ -191,6 +199,7 @@ pub fn build_command(
         program: opts.java.to_owned(),
         args,
         cwd: instance.game_dir(),
+        hide_console: false,
         secrets,
     }
 }
@@ -310,6 +319,7 @@ mod tests {
                 "token:s3cr3t:uuid".into(),
             ],
             cwd: PathBuf::from("."),
+            hide_console: false,
             secrets: vec!["s3cr3t".into()],
         };
         let shown = command.redacted_args();

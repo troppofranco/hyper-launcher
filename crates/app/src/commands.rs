@@ -263,6 +263,10 @@ pub struct SettingsView {
     pub msa_client_id: String,
     pub accent: String,
     pub minimize_on_launch: bool,
+    pub show_console: bool,
+    pub theme: String,
+    pub language: String,
+    pub setup_done: bool,
     pub sync: SyncConfig,
 }
 
@@ -278,6 +282,10 @@ pub fn get_settings(state: State<'_, AppState>) -> SettingsView {
         msa_client_id: c.msa_client_id.unwrap_or_default(),
         accent: c.accent,
         minimize_on_launch: c.minimize_on_launch,
+        show_console: c.show_console,
+        theme: c.theme,
+        language: c.language,
+        setup_done: c.setup_done,
         sync: c.sync,
     }
 }
@@ -293,6 +301,10 @@ pub fn save_settings(state: State<'_, AppState>, settings: SettingsView) -> CmdR
         msa_client_id: non_empty(settings.msa_client_id),
         accent: settings.accent.trim().to_owned(),
         minimize_on_launch: settings.minimize_on_launch,
+        show_console: settings.show_console,
+        theme: settings.theme,
+        language: settings.language,
+        setup_done: settings.setup_done,
         sync: settings.sync,
         ..state.config()
     };

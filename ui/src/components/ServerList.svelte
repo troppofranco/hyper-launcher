@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, type SavedServer, type ServerStatus } from '../lib/api';
   import { initial } from '../lib/format';
+  import { t } from '../lib/i18n.svelte';
 
   // Server salvati nelle istanze (elenco "Multigiocatore" del gioco), con
   // giocatori online e versione chiesti direttamente ai server.
@@ -21,27 +22,27 @@
 </script>
 
 <section class="servers" aria-labelledby="servers-title">
-  <h2 id="servers-title" class="section-title">I tuoi server</h2>
+  <h2 id="servers-title" class="section-title">{t('I tuoi server')}</h2>
   {#if servers === null}
     <div class="card skeleton"></div>
   {:else if !servers.length}
     <div class="card empty">
-      <p>Nessun server salvato.</p>
-      <p class="muted small">Aggiungili dal menu Multigiocatore del gioco: compariranno qui con giocatori online e versione.</p>
+      <p>{t('Nessun server salvato.')}</p>
+      <p class="muted small">{t('Aggiungili dal menu Multigiocatore del gioco: compariranno qui con giocatori online e versione.')}</p>
     </div>
   {:else}
     <ul class="list">
       {#each servers.slice(0, 6) as s, i (s.address)}
         {@const st = status[s.address]}
-        <li class="card row enter" style:--i={i} title={s.instances.length ? `In: ${s.instances.join(', ')}` : undefined}>
+        <li class="card row enter" style:--i={i} title={s.instances.length ? t('In: {istanze}', { istanze: s.instances.join(', ') }) : undefined}>
           {#if s.icon}<img class="ico" src={s.icon} alt="" />{:else}<span class="ico letter">{initial(s.name)}</span>{/if}
           <span class="meta">
             <span class="name">{s.name}</span>
             <span class="sub">
               {#if st === undefined}
-                <span class="dot wait"></span><span class="muted">Controllo…</span>
+                <span class="dot wait"></span><span class="muted">{t('Controllo…')}</span>
               {:else if st === 'offline'}
-                <span class="dot off"></span><span class="muted">Non raggiungibile</span>
+                <span class="dot off"></span><span class="muted">{t('Non raggiungibile')}</span>
               {:else}
                 <span class="dot on"></span><span>{st.online}/{st.max}</span>
                 {#if st.version}<span class="pill">{st.version}</span>{/if}
@@ -67,7 +68,7 @@
   .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sub { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-2); min-width: 0; }
   .dot { width: 7px; height: 7px; border-radius: 4px; flex: none; }
-  .dot.on { background: #3fb97f; box-shadow: 0 0 0 3px color-mix(in srgb, #3fb97f 25%, transparent); }
+  .dot.on { background: var(--success); box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 25%, transparent); }
   .dot.off { background: var(--faint); }
   .dot.wait { background: var(--accent); animation: pulse 1s ease-in-out infinite alternate; }
   .pill { font-family: var(--mono); font-size: 10px; padding: 2px 6px; border-radius: 5px; background: var(--surface-2); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }

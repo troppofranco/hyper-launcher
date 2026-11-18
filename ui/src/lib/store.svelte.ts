@@ -1,6 +1,7 @@
 // Stato globale dell'interfaccia (rune di Svelte 5).
 
 import { api, on, type Account, type AppInfo, type ContentKind, type Instance, type News, type SearchHit, type SearchSort, type Settings, type UpdateInfo, type Versions } from './api';
+import { setLang, t } from './i18n.svelte';
 
 export type Route =
   | { view: 'home' }
@@ -87,7 +88,7 @@ class AppStore {
           delete this.launches[s.instance];
           this.sessionsRev++;
           if (s.error) this.error(s.error);
-          else if (s.exitCode !== null && s.exitCode !== 0) this.error(`Minecraft si è chiuso con un errore (codice ${s.exitCode}). Guarda la console.`);
+          else if (s.exitCode !== null && s.exitCode !== 0) this.error(t('Minecraft si è chiuso con un errore (codice {codice}). Guarda la console.', { codice: s.exitCode }));
           void this.refreshInstances();
         } else {
           this.launches[s.instance] = { ...(this.launches[s.instance] ?? NO_PROGRESS), phase: s.state };
@@ -124,6 +125,8 @@ class AppStore {
   applySettings(settings: Settings) {
     this.settings = settings;
     document.documentElement.style.setProperty('--accent', settings.accent);
+    document.documentElement.dataset.theme = settings.theme;
+    setLang(settings.language);
   }
 
   async refreshInstances() {
@@ -177,7 +180,7 @@ class AppStore {
     try {
       const inst = await this.withContentProgress('', () => api.packInstall(project));
       await this.refreshInstances();
-      this.info_(`Modpack installato: nuova istanza “${inst.name}”.`);
+      this.info_(t('Modpack installato: nuova istanza “{nome}”.', { nome: inst.name }));
       this.go({ view: 'instance', name: inst.name });
       return true;
     } catch (e) {
@@ -190,7 +193,7 @@ class AppStore {
   async installContent(instance: string, project: string, title: string, kind: ContentKind, world: string | null): Promise<boolean> {
     try {
       const n = await this.withContentProgress(instance, () => api.install(instance, project, kind, world));
-      this.info_(`${title} installato in ${instance}${n > 1 ? `, con ${n - 1} dipendenze` : ''}.`);
+      this.info_(n > 1 ? t('{titolo} installato in {istanza}, con {n} dipendenze.', { titolo: title, istanza: instance, n: n - 1 }) : t('{titolo} installato in {istanza}.', { titolo: title, istanza: instance }));
       return true;
     } catch (e) {
       this.error(e);
@@ -204,7 +207,7 @@ class AppStore {
       const inst = await this.withContentProgress('', () => api.packImport());
       if (!inst) return;
       await this.refreshInstances();
-      this.info_(`Modpack importato: ${inst.name}.`);
+      this.info_(t('Modpack importato: {nome}.', { nome: inst.name }));
       this.go({ view: 'instance', name: inst.name });
     } catch (e) {
       this.error(e);
@@ -214,7 +217,7 @@ class AppStore {
   async play(name: string) {
     if (!this.activeAccount) {
       this.addAccountOpen = true;
-      this.info_('Aggiungi un account per giocare.');
+      this.info_(t('Aggiungi un account per giocare.'));
       return;
     }
     try {
@@ -225,7 +228,8 @@ class AppStore {
   }
 
   error(e: unknown) {
-    this.toast = { kind: 'error', text: typeof e === 'string' ? e : e instanceof Error ? e.message : String(e) };
+    // I messaggi del backend sono in italiano: si traducono se noti.
+    this.toast = { kind: 'error', text: t(typeof e === 'string' ? e : e instanceof Error ? e.message : String(e)) };
   }
 
   info_(text: string) {

@@ -6,6 +6,7 @@
   import Icon from './Icon.svelte';
   import ProjectIcon from './ProjectIcon.svelte';
   import ProgressBar from './ProgressBar.svelte';
+  import { t } from '../lib/i18n.svelte';
 
   // Mod, resource pack o shader di un'istanza, riconosciuti su Modrinth dal
   // loro hash, con aggiornamenti e collegamento al catalogo.
@@ -60,7 +61,7 @@
     updating = files;
     try {
       const n = await app.withContentProgress(instance, () => api.updateContent(instance, dir, files));
-      app.info_(n === 1 ? 'Aggiornato 1 file.' : `Aggiornati ${n} file.`);
+      app.info_(n === 1 ? t('Aggiornato 1 file.') : t('Aggiornati {n} file.', { n }));
     } catch (e) {
       app.error(e);
     } finally {
@@ -71,28 +72,28 @@
 </script>
 
 <div class="tools">
-  <input class="input grow" type="search" aria-label="Cerca tra {label.toLowerCase()}" placeholder="Cerca tra {label.toLowerCase()}…" bind:value={query} />
-  <button class="btn" onclick={() => api.openFolder(instance, dir)}><Icon name="folder" size={16} /> Apri cartella</button>
-  <button class="btn primary" onclick={() => app.browse(instance, kind)}><Icon name="plus" size={16} /> Aggiungi contenuti</button>
+  <input class="input grow" type="search" aria-label={t('Cerca tra {kind}', { kind: label.toLowerCase() })} placeholder={t('Cerca tra {kind}…', { kind: label.toLowerCase() })} bind:value={query} />
+  <button class="btn" onclick={() => api.openFolder(instance, dir)}><Icon name="folder" size={16} /> {t('Apri cartella')}</button>
+  <button class="btn primary" onclick={() => app.browse(instance, kind)}><Icon name="plus" size={16} /> {t('Aggiungi contenuti')}</button>
 </div>
 
-{#if running}<p class="note">Il gioco è in esecuzione: chiudilo per attivare, eliminare o aggiornare i file.</p>{/if}
+{#if running}<p class="note">{t('Il gioco è in esecuzione: chiudilo per attivare, eliminare o aggiornare i file.')}</p>{/if}
 
 {#if updates.length}
   <div class="banner">
-    <span class="grow"><strong>{updates.length === 1 ? '1 aggiornamento disponibile' : `${updates.length} aggiornamenti disponibili`}</strong>
+    <span class="grow"><strong>{updates.length === 1 ? t('1 aggiornamento disponibile') : t('{n} aggiornamenti disponibili', { n: updates.length })}</strong>
       <span class="muted"> · {updates.slice(0, 3).map((u) => u.title ?? u.name).join(', ')}{updates.length > 3 ? '…' : ''}</span></span>
     {#if updating}
       <span class="progress"><ProgressBar {progress} label={false} /></span>
     {:else}
-      <button class="btn primary small" disabled={running} onclick={() => runUpdate([])}>Aggiorna tutto</button>
+      <button class="btn primary small" disabled={running} onclick={() => runUpdate([])}>{t('Aggiorna tutto')}</button>
     {/if}
   </div>
 {/if}
 
 <div class="card list">
   {#if loading && !items.length}
-    <p class="muted pad">Lettura dei file e controllo su Modrinth…</p>
+    <p class="muted pad">{t('Lettura dei file e controllo su Modrinth…')}</p>
   {/if}
   {#each shown as item, i (item.file)}
     <div class="row enter" style:--i={i} class:off={!item.enabled}>
@@ -100,7 +101,7 @@
         <ProjectIcon url={item.iconUrl} name={item.title ?? item.name} size={40} />
         <span class="meta">
           <span class="name">{item.title ?? item.name}</span>
-          <span class="muted small">{item.file} · {megabytes(item.sizeBytes)}{item.projectId ? '' : ' · non trovato su Modrinth'}</span>
+          <span class="muted small">{item.file} · {megabytes(item.sizeBytes)}{item.projectId ? '' : t(' · non trovato su Modrinth')}</span>
         </span>
       </button>
       <span class="ver">
@@ -109,17 +110,17 @@
       </span>
       <span class="act">
         {#if item.update}
-          <button class="btn small upd" disabled={running || !!updating} onclick={() => runUpdate([item.file])}>Aggiorna</button>
+          <button class="btn small upd" disabled={running || !!updating} onclick={() => runUpdate([item.file])}>{t('Aggiorna')}</button>
         {/if}
       </span>
-      <button class="switch" role="switch" aria-checked={item.enabled} aria-label="{item.enabled ? 'Disattiva' : 'Attiva'} {item.title ?? item.name}" disabled={running} onclick={() => act(() => api.setContentEnabled(instance, dir, item.file, !item.enabled))}></button>
-      <button class="icon-btn" aria-label="Elimina {item.title ?? item.name}" disabled={running} onclick={() => act(() => api.deleteContent(instance, dir, item.file))}><Icon name="trash" size={18} /></button>
+      <button class="switch" role="switch" aria-checked={item.enabled} aria-label={item.enabled ? t('Disattiva {name}', { name: item.title ?? item.name }) : t('Attiva {name}', { name: item.title ?? item.name })} disabled={running} onclick={() => act(() => api.setContentEnabled(instance, dir, item.file, !item.enabled))}></button>
+      <button class="icon-btn" aria-label={t('Elimina {name}', { name: item.title ?? item.name })} disabled={running} onclick={() => act(() => api.deleteContent(instance, dir, item.file))}><Icon name="trash" size={18} /></button>
     </div>
   {:else}
     {#if !loading}
       <div class="empty pad">
-        <p class="muted">{items.length ? 'Nessun file corrisponde alla ricerca.' : `Nessun contenuto in ${label.toLowerCase()}.`}</p>
-        {#if !items.length}<button class="btn" onclick={() => app.browse(instance, kind)}>Cerca su Modrinth</button>{/if}
+        <p class="muted">{items.length ? t('Nessun file corrisponde alla ricerca.') : t('Nessun contenuto in {kind}.', { kind: label.toLowerCase() })}</p>
+        {#if !items.length}<button class="btn" onclick={() => app.browse(instance, kind)}>{t('Cerca su Modrinth')}</button>{/if}
       </div>
     {/if}
   {/each}
@@ -132,7 +133,7 @@
   .banner { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 12px; background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent); }
   .progress { width: 140px; }
   .list { overflow: hidden; }
-  .row { display: flex; align-items: center; gap: 14px; padding: 10px 16px; border-bottom: 1px solid #1f232c; }
+  .row { display: flex; align-items: center; gap: 14px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
   .row:last-child { border-bottom: 0; }
   .row.off .who { opacity: .55; }
   .who { flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; background: none; border: 0; padding: 0; text-align: left; }
@@ -143,10 +144,10 @@
   .ver { flex: 0 0 auto; max-width: 220px; font-family: var(--mono); font-size: 12px; color: var(--text-2); display: flex; flex-direction: column; align-items: flex-end; overflow: hidden; }
   .arrow { color: var(--accent-line); }
   .act { flex: 0 0 86px; display: flex; justify-content: flex-end; }
-  .upd { background: color-mix(in srgb, #3fb97f 18%, transparent); border-color: transparent; color: #7ee0ad; }
+  .upd { background: color-mix(in srgb, var(--success) 18%, transparent); border-color: transparent; color: var(--success-text); }
   .pad { padding: 16px; margin: 0; }
   .empty { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .empty p { margin: 0; }
   .icon-btn { width: 36px; height: 36px; border-radius: 8px; border: 0; background: transparent; color: var(--muted); display: flex; align-items: center; justify-content: center; flex: none; }
-  .icon-btn:hover:not(:disabled) { color: #ff8a8e; background: var(--surface-2); }
+  .icon-btn:hover:not(:disabled) { color: var(--danger-text); background: var(--surface-2); }
 </style>

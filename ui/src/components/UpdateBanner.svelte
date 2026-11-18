@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '../lib/i18n.svelte';
   import { api } from '../lib/api';
   import { app } from '../lib/store.svelte';
 
@@ -17,8 +18,8 @@
 
 {#if app.update?.available}
   <div class="banner" role="status">
-    <span>È disponibile una nuova versione di Hyper Launcher (build {app.update.available}).</span>
-    <button class="btn primary small" disabled={installing} onclick={install}>{installing ? 'Aggiornamento…' : 'Aggiorna e riavvia'}</button>
+    <span>{t('È disponibile una nuova versione di Hyper Launcher (build {build}).', { build: app.update.available })}</span>
+    <button class="btn primary small" disabled={installing} onclick={install}>{installing ? t('Aggiornamento…') : t('Aggiorna e riavvia')}</button>
   </div>
 {/if}
 

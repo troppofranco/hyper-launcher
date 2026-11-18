@@ -23,6 +23,14 @@ pub struct Config {
     pub minimize_on_launch: bool,
     /// Impostazioni di gioco condivise tra le istanze.
     pub sync: SyncConfig,
+    /// Mostra la finestra di console di Java accanto al gioco (Windows).
+    pub show_console: bool,
+    /// Tema dell'interfaccia: `dark` o `light`.
+    pub theme: String,
+    /// Lingua dell'interfaccia (`it`, `en`).
+    pub language: String,
+    /// Configurazione iniziale completata (account, aspetto, lingua).
+    pub setup_done: bool,
 }
 
 /// Quali impostazioni di `options.txt` condividere tra le istanze.
@@ -60,6 +68,10 @@ impl Default for Config {
             accent: "#6e5ae6".into(),
             minimize_on_launch: true,
             sync: SyncConfig::default(),
+            show_console: false,
+            theme: "dark".into(),
+            language: "it".into(),
+            setup_done: false,
         }
     }
 }
@@ -82,8 +94,24 @@ impl Config {
                 self.accent
             )));
         }
+        if !Self::THEMES.contains(&self.theme.as_str()) {
+            return Err(CoreError::InvalidConfig(format!(
+                "unknown theme {:?}",
+                self.theme
+            )));
+        }
+        if !Self::LANGUAGES.contains(&self.language.as_str()) {
+            return Err(CoreError::InvalidConfig(format!(
+                "unknown language {:?}",
+                self.language
+            )));
+        }
         Ok(())
     }
+
+    /// Temi e lingue che l'interfaccia conosce.
+    pub const THEMES: [&str; 2] = ["dark", "light"];
+    pub const LANGUAGES: [&str; 2] = ["it", "en"];
 
     pub const MSA_CLIENT_ID_ENV: &str = "HYPER_MSA_CLIENT_ID";
 

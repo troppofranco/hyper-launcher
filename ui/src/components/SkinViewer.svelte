@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { SkinViewer } from 'skinview3d';
   import { prefersReducedMotion } from 'svelte/motion';
+  import { t } from '../lib/i18n.svelte';
 
   // Anteprima 3D della skin: si gira trascinando, cammina sul posto. La
   // libreria 3D (three.js) si carica solo quando serve, non all'avvio.
@@ -44,7 +45,7 @@
   });
 </script>
 
-<canvas bind:this={canvas} {width} {height} aria-label="Anteprima 3D della skin: trascina per girarla"></canvas>
+<canvas bind:this={canvas} {width} {height} aria-label={t('Anteprima 3D della skin: trascina per girarla')}></canvas>
 
 <style>
   canvas { display: block; max-width: 100%; cursor: grab; }

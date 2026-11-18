@@ -57,6 +57,10 @@ export interface Settings {
   msaClientId: string;
   accent: string;
   minimizeOnLaunch: boolean;
+  showConsole: boolean;
+  theme: 'dark' | 'light';
+  language: 'it' | 'en';
+  setupDone: boolean;
   sync: SyncSettings;
 }
 export interface SyncSettings { enabled: boolean; keybinds: boolean; video: boolean; audio: boolean; controls: boolean }

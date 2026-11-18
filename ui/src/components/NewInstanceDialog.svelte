@@ -4,6 +4,7 @@
   import Modal from './Modal.svelte';
   import { LOADERS } from '../lib/content';
   import InstanceIcon from './InstanceIcon.svelte';
+  import { t } from '../lib/i18n.svelte';
 
   type LoaderChoice = 'vanilla' | LoaderKind;
   const CHOICES: [LoaderChoice, string][] = [['vanilla', 'Vanilla'], ...LOADERS];
@@ -63,23 +64,23 @@
   }
 </script>
 
-<Modal title="Nuova istanza" onclose={close}>
+<Modal title={t('Nuova istanza')} onclose={close}>
   <form onsubmit={create} class="form">
     <div class="top">
       <InstanceIcon name={previewName} size={88} />
       <div class="fields">
-        <label class="field">Nome
-          <input class="input" bind:value={name} placeholder="Lascia vuoto per un nome automatico" maxlength="64" />
+        <label class="field">{t('Nome')}
+          <input class="input" bind:value={name} placeholder={t('Lascia vuoto per un nome automatico')} maxlength="64" />
         </label>
         <div class="field">
           <span class="row-label">
-            <label for="version">Versione di Minecraft</label>
-            <label class="snap"><input type="checkbox" bind:checked={showSnapshots} /> Mostra snapshot</label>
+            <label for="version">{t('Versione di Minecraft')}</label>
+            <label class="snap"><input type="checkbox" bind:checked={showSnapshots} /> {t('Mostra snapshot')}</label>
           </span>
           <select id="version" class="input" bind:value={version} disabled={!versions}>
-            {#if !versions}<option>Caricamento…</option>{/if}
+            {#if !versions}<option>{t('Caricamento…')}</option>{/if}
             {#each options as v (v.id)}
-              <option value={v.id}>{v.id}{v.id === versions?.latestRelease ? ' (ultima)' : ''}</option>
+              <option value={v.id}>{v.id}{v.id === versions?.latestRelease ? t(' (ultima)') : ''}</option>
             {/each}
           </select>
         </div>
@@ -87,27 +88,27 @@
     </div>
 
     <fieldset>
-      <legend>Mod loader</legend>
+      <legend>{t('Mod loader')}</legend>
       <div class="loaders">
         {#each CHOICES as [id, label] (id)}
           <button type="button" class:on={loader === id} aria-pressed={loader === id} onclick={() => (loader = id)}>{label}</button>
         {/each}
       </div>
       {#if loader !== 'vanilla' && loaderOk === false}
-        <span class="warn">{loaderName} non supporta ancora {version}.</span>
+        <span class="warn">{t('{loader} non supporta ancora {version}.', { loader: loaderName, version })}</span>
       {:else if loader === 'neoforge' || loader === 'forge'}
-        <span class="hint">Al primo avvio il launcher esegue l’installer ufficiale di {loaderName}: ci vuole qualche secondo in più.</span>
+        <span class="hint">{t('Al primo avvio il launcher esegue l’installer ufficiale di {loader}: ci vuole qualche secondo in più.', { loader: loaderName })}</span>
       {/if}
     </fieldset>
 
     {#if error}<p class="error-box" role="alert">{error}</p>{/if}
 
     <div class="foot">
-      <label class="check"><input type="checkbox" bind:checked={launchAfter} /> Avvia dopo la creazione</label>
+      <label class="check"><input type="checkbox" bind:checked={launchAfter} /> {t('Avvia dopo la creazione')}</label>
       <div class="actions">
-        <button type="button" class="btn" onclick={close}>Annulla</button>
+        <button type="button" class="btn" onclick={close}>{t('Annulla')}</button>
         <button type="submit" class="btn primary" disabled={busy || !version || (loader !== 'vanilla' && loaderOk === false)}>
-          {busy ? 'Creazione…' : 'Crea istanza'}
+          {busy ? t('Creazione…') : t('Crea istanza')}
         </button>
       </div>
     </div>
@@ -125,7 +126,7 @@
   .loaders { display: flex; gap: 8px; flex-wrap: wrap; }
   .loaders button { height: 40px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--panel); font-weight: 600; font-size: 13px; }
   .loaders button.on { border-color: var(--accent-line); background: var(--accent-soft); }
-  .warn { font-size: 12px; color: #f0b37e; }
+  .warn { font-size: 12px; color: var(--warn-text); }
   .hint { font-size: 12px; color: var(--muted); }
   .foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
   .check { display: flex; align-items: center; gap: 8px; color: var(--text-2); }

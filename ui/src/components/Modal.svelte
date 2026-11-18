@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '../lib/i18n.svelte';
   import type { Snippet } from 'svelte';
   import Icon from './Icon.svelte';
   import { fade, scale } from 'svelte/transition';
@@ -15,7 +16,7 @@
   <div class="dialog" role="dialog" aria-modal="true" aria-labelledby={id} style:width="{width}px" transition:scale|global={{ start: 0.95, duration: d(220), easing: cubicOut }}>
     <div class="head">
       <h2 {id}>{title}</h2>
-      <button class="x" aria-label="Chiudi" onclick={onclose}><Icon name="close" size={18} /></button>
+      <button class="x" aria-label={t('Chiudi')} onclick={onclose}><Icon name="close" size={18} /></button>
     </div>
     {@render children()}
   </div>

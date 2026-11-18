@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '../lib/i18n.svelte';
   import { app } from '../lib/store.svelte';
   import Icon from './Icon.svelte';
   import InstanceIcon from './InstanceIcon.svelte';
@@ -10,19 +11,19 @@
   const view = $derived(app.route.view);
 </script>
 
-<nav class="sidebar" aria-label="Navigazione principale">
+<nav class="sidebar" aria-label={t('Navigazione principale')}>
   <div class="account-wrap">
-    <button class="avatar" aria-label={app.activeAccount ? `Account: ${app.activeAccount.name}` : 'Aggiungi un account'} aria-expanded={menuOpen} onclick={() => (menuOpen = !menuOpen)}>
+    <button class="avatar" aria-label={app.activeAccount ? t('Account: {nome}', { nome: app.activeAccount.name }) : t('Aggiungi un account')} aria-expanded={menuOpen} onclick={() => (menuOpen = !menuOpen)}>
       {app.activeAccount ? initial(app.activeAccount.name) : '+'}
     </button>
     {#if menuOpen}<AccountMenu onclose={() => (menuOpen = false)} />{/if}
   </div>
   <div class="sep"></div>
-  <button class="nav" class:active={view === 'home'} aria-label="Home" onclick={() => app.go({ view: 'home' })}><Icon name="home" size={22} /></button>
-  <button class="nav" class:active={view === 'library'} aria-label="Libreria" onclick={() => app.go({ view: 'library' })}><Icon name="library" size={22} /></button>
-  <button class="nav" class:active={view === 'explore' || view === 'project'} aria-label="Esplora" title="Esplora" onclick={() => app.go({ view: 'explore' })}><Icon name="compass" size={22} /></button>
-  <button class="nav" class:active={view === 'customize'} aria-label="Personalizzazione" title="Personalizzazione" onclick={() => app.go({ view: 'customize' })}><Icon name="shirt" size={22} /></button>
-  <button class="nav" aria-label="Nuova istanza" onclick={() => (app.newInstanceOpen = true)}><Icon name="plus" size={22} /></button>
+  <button class="nav" class:active={view === 'home'} aria-label={t('Home')} onclick={() => app.go({ view: 'home' })}><Icon name="home" size={22} /></button>
+  <button class="nav" class:active={view === 'library'} aria-label={t('Libreria')} onclick={() => app.go({ view: 'library' })}><Icon name="library" size={22} /></button>
+  <button class="nav" class:active={view === 'explore' || view === 'project'} aria-label={t('Esplora')} title={t('Esplora')} onclick={() => app.go({ view: 'explore' })}><Icon name="compass" size={22} /></button>
+  <button class="nav" class:active={view === 'customize'} aria-label={t('Personalizzazione')} title={t('Personalizzazione')} onclick={() => app.go({ view: 'customize' })}><Icon name="shirt" size={22} /></button>
+  <button class="nav" aria-label={t('Nuova istanza')} onclick={() => (app.newInstanceOpen = true)}><Icon name="plus" size={22} /></button>
   {#if shortcuts.length}<div class="sep"></div>{/if}
   {#each shortcuts as inst (inst.name)}
     <button
@@ -37,14 +38,14 @@
     </button>
   {/each}
   <div class="spacer"></div>
-  <button class="nav" class:active={view === 'settings'} aria-label="Impostazioni" onclick={() => app.go({ view: 'settings' })}><Icon name="settings" size={22} /></button>
+  <button class="nav" class:active={view === 'settings'} aria-label={t('Impostazioni')} onclick={() => app.go({ view: 'settings' })}><Icon name="settings" size={22} /></button>
 </nav>
 
 <style>
-  .sidebar { flex: 0 0 76px; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px 0; background: var(--panel); border-right: 1px solid #1f232c; }
+  .sidebar { flex: 0 0 76px; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px 0; background: var(--panel); border-right: 1px solid var(--line); }
   .account-wrap { position: relative; }
   .avatar { width: 48px; height: 48px; border-radius: 14px; border: 2px solid var(--accent); background: var(--accent-soft); font-weight: 700; font-size: 17px; font-family: var(--display); }
-  .sep { width: 32px; height: 1px; background: #262a34; margin: 6px 0; }
+  .sep { width: 32px; height: 1px; background: var(--line); margin: 6px 0; }
   .nav { transition: background .2s ease, color .2s ease, transform .15s ease; }
   .nav:active { transform: scale(.92); }
   .shortcut { transition: transform .18s cubic-bezier(.2,.8,.2,1); }
@@ -54,6 +55,6 @@
   .nav.active { background: var(--accent); color: #fff; }
   .shortcut { padding: 0; border: 0; background: transparent; border-radius: 13px; position: relative; }
   .shortcut.current { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .shortcut.running::after { content: ''; position: absolute; right: -2px; bottom: -2px; width: 12px; height: 12px; border-radius: 6px; background: #3ecf8e; border: 2px solid var(--panel); }
+  .shortcut.running::after { content: ''; position: absolute; right: -2px; bottom: -2px; width: 12px; height: 12px; border-radius: 6px; background: var(--success); border: 2px solid var(--panel); }
   .spacer { flex: 1; }
 </style>
