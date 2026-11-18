@@ -1,4 +1,4 @@
-import type { Appearance } from './api';
+import { inTauri, type Appearance } from './api';
 import { setMotion } from './motion.svelte';
 
 // Scelte d'aspetto condivise da Impostazioni e configurazione iniziale.
@@ -26,6 +26,10 @@ export function applyAppearance(a: Appearance, windowEffect: boolean) {
   // Senza effetto della finestra la trasparenza mostrerebbe il desktop nitido.
   root.dataset.background = a.background === 'transparent' && !windowEffect ? 'solid' : a.background;
   root.dataset.radius = a.radius;
+  root.dataset.buttons = a.buttons;
+  // Nell'app la scala è lo zoom nativo della WebView (applicato dal backend);
+  // nel browser di sviluppo si simula con lo zoom CSS.
+  root.toggleAttribute('data-css-zoom', !inTauri);
   root.dataset.animations = a.animations;
   root.toggleAttribute('data-wide', a.wideContent);
   root.style.setProperty('--alpha', String(a.panelOpacity / 100));

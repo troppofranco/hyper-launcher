@@ -20,8 +20,8 @@
 {/if}
 
 <style>
-  /* Lo zoom della scala interfaccia si annulla: lo sfondo copre sempre la finestra. */
-  .backdrop { zoom: calc(1 / var(--ui-scale, 1)); position: fixed; inset: 0; z-index: 0; overflow: hidden; background: var(--c-bg); pointer-events: none; }
+  :global(:root[data-css-zoom]) .backdrop { zoom: calc(1 / var(--ui-scale, 1)); }
+  .backdrop { position: fixed; inset: 0; z-index: 0; overflow: hidden; background: var(--c-bg); pointer-events: none; }
   /* Bordi allargati: la sfocatura non lascia aloni chiari ai margini. */
   .img { position: absolute; inset: calc(var(--bg-blur) * -2); background-size: cover; background-position: center; filter: blur(var(--bg-blur)); transform: translateZ(0); }
   .dim { position: absolute; inset: 0; background: color-mix(in srgb, var(--c-bg) calc(var(--bg-dim) * 100%), transparent); }

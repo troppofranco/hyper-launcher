@@ -91,9 +91,12 @@
 
 <style>
   .shell { position: relative; z-index: 1; height: 100%; display: flex; flex-direction: column; }
-  .body { flex: 1; display: flex; min-height: 0; }
+  /* Barra laterale e notizie sono pannelli arrotondati che "galleggiano"
+     nella finestra, staccati dai bordi. */
+  .body { flex: 1; display: flex; min-height: 0; padding: 0 10px 10px; gap: 10px; }
+  .body > :global(.sidebar), .body > :global(.news) { border-radius: var(--radius); border: 1px solid var(--line); box-shadow: 0 10px 30px var(--shadow); }
   /* Barra laterale a destra: ultima della riga (dopo notizie e contenuti). */
-  .body.right > :global(.sidebar) { order: 2; border-right: 0; border-left: 1px solid var(--line); }
+  .body.right > :global(.sidebar) { order: 2; }
   .content { flex: 1; min-width: 0; }
   .view { min-height: 100%; }
   .fatal { color: var(--danger-text); user-select: text; }

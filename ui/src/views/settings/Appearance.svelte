@@ -88,8 +88,8 @@
 
 {#if a.background === 'transparent'}
   <section class="group sub" transition:slide={{ duration: ms(240) }}>
-    <Segmented bind:value={a.effect} label="Effetto della finestra" options={[['mica', 'Mica'], ['acrylic', 'Acrylic']]} />
-    <p class="muted small">{t('Mica tinge la finestra con i colori del desktop (Windows 11); Acrylic sfoca davvero ciò che sta dietro. Su Windows 10 c’è solo Acrylic.')}</p>
+    <Segmented bind:value={a.effect} label="Intensità della sfocatura" options={[['blur', 'Leggera'], ['acrylic', 'Media'], ['mica', 'Forte']]} />
+    <p class="muted small">{t('Sono gli effetti di Windows: Leggera lascia intravedere le finestre dietro, Media le sfoca e le tinge, Forte mostra solo i colori dello sfondo del desktop (Windows 11; su Windows 10 diventa Media).')}</p>
     <Range bind:value={a.panelOpacity} label="Opacità dei pannelli" min={20} max={100} step={5} unit="%" />
   </section>
 {:else if a.background === 'image'}
@@ -107,6 +107,10 @@
 {/if}
 
 <section class="group enter" style:--i={3}>
+  <Segmented bind:value={a.buttons} label="Stile dei pulsanti" options={[['standard', 'Standard'], ['liquid', 'Liquid glass']]} />
+</section>
+
+<section class="group enter" style:--i={4}>
   <Segmented bind:value={a.animations} label="Animazioni" options={[['full', 'Complete'], ['reduced', 'Ridotte'], ['off', 'Spente']]} />
 </section>
 

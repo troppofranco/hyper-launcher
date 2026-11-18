@@ -48,7 +48,8 @@ pub struct Config {
 pub struct AppearanceConfig {
     /// `solid`, `transparent` (desktop sfocato dietro la finestra) o `image`.
     pub background: String,
-    /// Effetto della finestra trasparente: `mica` o `acrylic` (Windows).
+    /// Intensità della sfocatura della finestra trasparente, come effetto di
+    /// Windows: `blur` (leggera), `acrylic` (media), `mica` (forte).
     pub effect: String,
     /// Sfocatura dell'immagine di sfondo, in px (0–40).
     pub blur: u32,
@@ -60,6 +61,8 @@ pub struct AppearanceConfig {
     pub ui_scale: u32,
     /// Angoli: `sharp`, `medium`, `round`.
     pub radius: String,
+    /// Stile dei pulsanti: `standard` o `liquid` (vetro liquido).
+    pub buttons: String,
     /// Animazioni: `full`, `reduced`, `off`.
     pub animations: String,
     /// Barra laterale: `left` o `right`.
@@ -86,7 +89,8 @@ impl Default for AppearanceConfig {
             dim: 40,
             panel_opacity: 70,
             ui_scale: 100,
-            radius: "medium".into(),
+            radius: "round".into(),
+            buttons: "standard".into(),
             animations: "full".into(),
             sidebar_side: "left".into(),
             sidebar_labels: false,
@@ -112,7 +116,8 @@ pub struct WidgetConfig {
 }
 
 const BACKGROUNDS: &[&str] = &["solid", "transparent", "image"];
-const EFFECTS: &[&str] = &["mica", "acrylic"];
+const EFFECTS: &[&str] = &["blur", "acrylic", "mica"];
+const BUTTONS: &[&str] = &["standard", "liquid"];
 const RADII: &[&str] = &["sharp", "medium", "round"];
 const ANIMATIONS: &[&str] = &["full", "reduced", "off"];
 const SIDES: &[&str] = &["left", "right"];
@@ -132,13 +137,14 @@ fn widget_ok(widget: &WidgetConfig) -> bool {
 
 impl AppearanceConfig {
     /// Campi testuali con i valori ammessi.
-    fn choices(&mut self) -> [(&'static str, &mut String, &'static [&'static str]); 5] {
+    fn choices(&mut self) -> [(&'static str, &mut String, &'static [&'static str]); 6] {
         [
             ("background", &mut self.background, BACKGROUNDS),
             ("window effect", &mut self.effect, EFFECTS),
             ("corner style", &mut self.radius, RADII),
             ("animation level", &mut self.animations, ANIMATIONS),
             ("sidebar side", &mut self.sidebar_side, SIDES),
+            ("button style", &mut self.buttons, BUTTONS),
         ]
     }
 
@@ -198,6 +204,7 @@ impl AppearanceConfig {
             defaults.radius,
             defaults.animations,
             defaults.sidebar_side,
+            defaults.buttons,
         ];
         for ((_, value, allowed), default) in self.choices().into_iter().zip(fallback) {
             if !allowed.contains(&value.as_str()) {

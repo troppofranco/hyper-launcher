@@ -15,21 +15,27 @@ use crate::state::{AppState, CmdResult, OrCmd};
 /// Limite dell'immagine di sfondo: l'interfaccia la riduce prima (2560 px).
 const MAX_BACKGROUND_BYTES: usize = 8 * 1024 * 1024;
 
-/// Applica (o toglie) l'effetto trasparente alla finestra principale. Se
-/// Mica non c'è (Windows 10) si ripiega su Acrylic. Restituisce `true` se lo
-/// sfondo trasparente è attivo: altrimenti l'interfaccia usa la tinta unita
-/// (una finestra trasparente senza effetto mostrerebbe il desktop nitido).
+/// Applica aspetto e scala alla finestra principale: zoom nativo della
+/// WebView (come Ctrl +/−, ridimensiona tutta la pagina in modo coerente) ed
+/// effetto trasparente. L'intensità della sfocatura è uno degli effetti di
+/// Windows: Blur (leggera), Acrylic (media), Mica (forte; su Windows 10 si
+/// ripiega su Acrylic). Restituisce `true` se lo sfondo trasparente è attivo:
+/// altrimenti l'interfaccia usa la tinta unita (una finestra trasparente senza
+/// effetto mostrerebbe il desktop nitido).
 pub fn apply_window_effect(app: &AppHandle, appearance: &AppearanceConfig) -> bool {
     let Some(window) = app.get_webview_window("main") else {
         return false;
     };
+    if let Err(e) = window.set_zoom(f64::from(appearance.ui_scale) / 100.0) {
+        tracing::warn!(error = %e, "cannot apply the interface scale");
+    }
     let wanted = appearance.background == "transparent";
     let result = if wanted {
         let effect = |e: Effect| window.set_effects(EffectsBuilder::new().effect(e).build());
-        if appearance.effect == "acrylic" {
-            effect(Effect::Acrylic)
-        } else {
-            effect(Effect::Mica).or_else(|_| effect(Effect::Acrylic))
+        match appearance.effect.as_str() {
+            "blur" => effect(Effect::Blur).or_else(|_| effect(Effect::Acrylic)),
+            "acrylic" => effect(Effect::Acrylic),
+            _ => effect(Effect::Mica).or_else(|_| effect(Effect::Acrylic)),
         }
     } else {
         window.set_effects(None)

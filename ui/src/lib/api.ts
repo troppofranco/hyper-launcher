@@ -87,12 +87,14 @@ export type WidgetSize = 'small' | 'medium' | 'large';
 export interface WidgetConfig { kind: string; size: WidgetSize; options: Record<string, number> }
 export interface Appearance {
   background: 'solid' | 'transparent' | 'image';
-  effect: 'mica' | 'acrylic';
+  /** Intensità della sfocatura: blur = leggera, acrylic = media, mica = forte. */
+  effect: 'blur' | 'acrylic' | 'mica';
   blur: number;
   dim: number;
   panelOpacity: number;
   uiScale: number;
   radius: 'sharp' | 'medium' | 'round';
+  buttons: 'standard' | 'liquid';
   animations: 'full' | 'reduced' | 'off';
   sidebarSide: 'left' | 'right';
   sidebarLabels: boolean;
