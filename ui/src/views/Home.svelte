@@ -84,16 +84,76 @@
     draft.push(newWidget(kind));
   }
 
-  // Trascinamento: il widget si sposta subito sopra quello che si sorvola.
-  function dragOver(e: DragEvent, kind: string) {
-    if (!dragging) return;
-    e.preventDefault();
-    if (dragging === kind || lastOver === kind) return;
+  /** Sposta il widget trascinato al posto di quello sorvolato. */
+  function moveTo(kind: string) {
+    if (!dragging || dragging === kind || lastOver === kind) return;
     lastOver = kind;
-    const from = index(dragging);
-    const to = index(kind);
-    const [moved] = draft.splice(from, 1);
-    draft.splice(to, 0, moved);
+    const [moved] = draft.splice(index(dragging), 1);
+    draft.splice(index(kind), 0, moved);
+  }
+
+  // Trascinamento con il puntatore (mouse, penna o dito). Non si usa il
+  // drag & drop nativo del browser: nell'app Tauri lo intercetta per il
+  // rilascio di file sulla finestra, e il trascinamento non partirebbe.
+  // Il widget segue il puntatore; gli altri si spostano per fargli posto.
+  function pointerDown(e: PointerEvent, kind: string) {
+    if (!editing || e.button !== 0 || (e.target as HTMLElement).closest('.menu, .menu-btn')) return;
+    const el = e.currentTarget as HTMLElement;
+    const scroller = el.closest('.content') as HTMLElement | null;
+    const start = { x: e.clientX, y: e.clientY };
+    const rect = el.getBoundingClientRect();
+    const grab = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    let pointer = start;
+    let raf = 0;
+
+    // Il widget resta sotto il puntatore anche quando il suo posto cambia.
+    const follow = () => {
+      el.style.transform = '';
+      const r = el.getBoundingClientRect();
+      el.style.transform = `translate(${pointer.x - grab.x - r.left}px, ${pointer.y - grab.y - r.top}px) scale(1.02)`;
+    };
+    // Vicino ai bordi della pagina si scorre da soli.
+    const autoScroll = () => {
+      raf = 0;
+      if (!dragging || !scroller) return;
+      const box = scroller.getBoundingClientRect();
+      const edge = 70;
+      const speed = pointer.y < box.top + edge ? -(box.top + edge - pointer.y) : pointer.y > box.bottom - edge ? pointer.y - (box.bottom - edge) : 0;
+      if (speed) {
+        scroller.scrollTop += speed / 3;
+        follow();
+        raf = requestAnimationFrame(autoScroll);
+      }
+    };
+
+    const move = (ev: PointerEvent) => {
+      pointer = { x: ev.clientX, y: ev.clientY };
+      if (!dragging) {
+        if (Math.hypot(pointer.x - start.x, pointer.y - start.y) < 6) return;
+        dragging = kind;
+        menu = null;
+      }
+      // Il widget sotto il puntatore, saltando quello trascinato (che lo segue).
+      const over = document
+        .elementsFromPoint(pointer.x, pointer.y)
+        .map((n) => n.closest<HTMLElement>('.w[data-kind]'))
+        .find((w) => w && w !== el);
+      if (over?.dataset.kind) moveTo(over.dataset.kind);
+      follow();
+      if (!raf) raf = requestAnimationFrame(autoScroll);
+    };
+    const end = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+      cancelAnimationFrame(raf);
+      el.style.transform = '';
+      dragging = null;
+      lastOver = null;
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
   }
 
   function onWindowClick(e: MouseEvent) {
@@ -144,12 +204,9 @@
         class:wiggle={editing && motionLevel() === 'full' && dragging === null}
         style:--i={i}
         aria-label={def ? t(def.name) : w.kind}
-        draggable={editing}
-        ondragstart={(e) => { dragging = w.kind; menu = null; e.dataTransfer?.setData('text/plain', w.kind); }}
-        ondragover={(e) => dragOver(e, w.kind)}
-        ondrop={(e) => e.preventDefault()}
-        ondragend={() => { dragging = null; lastOver = null; }}
-        animate:flip={{ duration: ms(260), easing: cubicOut }}
+        data-kind={w.kind}
+        onpointerdown={(e) => pointerDown(e, w.kind)}
+        animate:flip={{ duration: dragging === w.kind ? 0 : ms(260), easing: cubicOut }}
         in:fly={{ y: 12, duration: ms(300), delay: editing ? 0 : ms(Math.min(i, 8) * 45), easing: cubicOut }}
       >
         {#if editing}
@@ -235,7 +292,9 @@
   .section-title { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
   .editing .w { padding: 10px; border-radius: calc(var(--radius) + 4px); border: 1.5px dashed var(--line-strong); background: color-mix(in srgb, var(--c-surface) 40%, transparent); cursor: grab; transition: border-color .2s ease, box-shadow .2s ease, opacity .2s ease; }
   .editing .w:hover { border-color: var(--accent-line); }
-  .editing .w.dragging { opacity: .45; border-color: var(--accent); border-style: solid; }
+  .editing .w { touch-action: none; }
+  /* Il widget in mano: sopra agli altri, ombra profonda, non intercetta il puntatore. */
+  .editing .w.dragging { z-index: 20; pointer-events: none; cursor: grabbing; border-color: var(--accent); border-style: solid; background: var(--c-surface); box-shadow: 0 24px 60px var(--shadow), 0 0 0 1px var(--accent); transition: box-shadow .2s ease; }
   .editing .body { pointer-events: none; user-select: none; max-height: 340px; overflow: hidden; }
   .wiggle { animation: wiggle .5s ease-in-out infinite alternate; animation-delay: calc(var(--i) * -70ms); }
   @keyframes wiggle { from { transform: rotate(-.25deg); } to { transform: rotate(.25deg); } }
