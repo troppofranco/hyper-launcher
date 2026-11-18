@@ -6,7 +6,7 @@
   import Icon from '../components/Icon.svelte';
   import InstanceIcon from '../components/InstanceIcon.svelte';
   import PlayButton from '../components/PlayButton.svelte';
-  import Modal from '../components/Modal.svelte';
+  import DeleteInstanceDialog from '../components/DeleteInstanceDialog.svelte';
   import ContentList from '../components/ContentList.svelte';
   import { pickFile, squarePng } from '../lib/image';
   import { t } from '../lib/i18n.svelte';
@@ -27,7 +27,6 @@
   let syncSettings = $state(true);
   let saving = $state(false);
   let deleteOpen = $state(false);
-  let deleteConfirm = $state('');
 
   const inst = $derived(app.instances.find((i) => i.name === name) ?? null);
   const launch = $derived(app.launches[name]);
@@ -110,17 +109,6 @@
     }
   }
 
-  async function remove() {
-    try {
-      await api.deleteInstance(name);
-      deleteOpen = false;
-      app.go({ view: 'library' });
-      await app.refreshInstances();
-    } catch (e) {
-      app.error(e);
-    }
-  }
-
   const tabs = $derived<[Tab, string][]>([
     ...(inst?.loader ? [['mods', modCount === null ? t('Mod') : t('Mod · {n}', { n: modCount })] as [Tab, string]] : []),
     ['resourcepacks', t('Resource pack')],
@@ -153,6 +141,7 @@
           </div>
           <h1 class="page-title">{inst.name}</h1>
         </div>
+        <button class="btn icon-only" disabled={!!launch} aria-label={t('Elimina istanza')} title={t('Elimina istanza')} onclick={() => (deleteOpen = true)}><Icon name="trash" size={16} /></button>
         <button class="btn" disabled={exporting} onclick={exportPack}><Icon name="download" size={16} /> {t('Esporta .mrpack')}</button>
         <PlayButton name={inst.name} size="large" />
       </div>
@@ -212,7 +201,7 @@
           <input class="input" bind:value={jvmArgs} placeholder={t('es. -XX:+UseZGC')} />
         </label>
         <div class="form-actions">
-          <button type="button" class="btn danger" disabled={!!launch} onclick={() => { deleteConfirm = ''; deleteOpen = true; }}><Icon name="trash" size={16} /> {t('Elimina istanza')}</button>
+          <button type="button" class="btn danger" disabled={!!launch} onclick={() => (deleteOpen = true)}><Icon name="trash" size={16} /> {t('Elimina istanza')}</button>
           <span class="actions">
             <button type="button" class="btn" onclick={() => api.openFolder(name, 'game')}><Icon name="folder" size={16} /> {t('Apri cartella')}</button>
             <button type="submit" class="btn primary" disabled={saving}>{t('Salva')}</button>
@@ -223,17 +212,7 @@
   </div>
 
   {#if deleteOpen}
-    <Modal title={t('Eliminare l’istanza?')} onclose={() => (deleteOpen = false)} width={480}>
-      {@const [before, after] = t('Verranno cancellati per sempre i mondi, le mod e le impostazioni di {name}. Non si può annullare.').split('{name}')}
-      <p class="confirm-text">{before}<strong>{inst.name}</strong>{after}</p>
-      <label class="field">{t('Scrivi il nome dell’istanza per confermare')}
-        <input class="input" bind:value={deleteConfirm} placeholder={inst.name} />
-      </label>
-      <div class="actions end">
-        <button class="btn" onclick={() => (deleteOpen = false)}>{t('Annulla')}</button>
-        <button class="btn danger" disabled={deleteConfirm !== inst.name} onclick={remove}>{t('Elimina definitivamente')}</button>
-      </div>
-    </Modal>
+    <DeleteInstanceDialog {name} onclose={() => (deleteOpen = false)} ondeleted={() => app.go({ view: 'library' })} />
   {/if}
 {/if}
 
@@ -268,6 +247,6 @@
   .setting { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
   .form-actions { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
   .actions { display: flex; gap: 10px; }
-  .actions.end { justify-content: flex-end; }
-  .confirm-text { margin: 0; line-height: 1.5; }
+  .icon-only { width: 44px; padding: 0; }
+  .icon-only:hover:not(:disabled) { color: var(--danger-text); border-color: color-mix(in srgb, var(--danger) 60%, transparent); }
 </style>

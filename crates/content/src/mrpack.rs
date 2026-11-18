@@ -268,7 +268,29 @@ pub async fn install_from_modrinth(
         .await?;
     let result = import(manager, downloader, &path, progress).await;
     let _ = std::fs::remove_file(&path);
-    result
+    let instance = result?;
+    project_icon(api, downloader, project, &instance).await;
+    Ok(instance)
+}
+
+/// Usa l'icona del progetto Modrinth come immagine della nuova istanza.
+/// Facoltativa: se manca, non si scarica o è in un formato non gestito
+/// (es. SVG), l'istanza resta senza immagine. Non ha un hash da
+/// verificare: viene solo mostrata, dopo il controllo del formato.
+async fn project_icon(api: &Modrinth, downloader: &Downloader, project: &str, instance: &Instance) {
+    let Ok(info) = api.project(project).await else {
+        return;
+    };
+    let Some(url) = info.icon_url.filter(|u| is_trusted_download(u)) else {
+        return;
+    };
+    let result = match downloader.get_bytes(&url).await {
+        Ok(bytes) => instance.set_icon(Some(&bytes)).map_err(|e| e.to_string()),
+        Err(e) => Err(e.to_string()),
+    };
+    if let Err(error) = result {
+        tracing::warn!(%error, "cannot use the modpack icon");
+    }
 }
 
 /// Esito di un export.

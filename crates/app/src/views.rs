@@ -50,9 +50,12 @@ impl InstanceView {
             java_path: c.java_path.as_ref().map(|p| p.display().to_string()),
             jvm_args: c.jvm_args.clone(),
             sync_settings: c.sync_settings,
-            icon: instance
-                .icon()
-                .map(|png| crate::custom::data_url("image/png", &png)),
+            icon: instance.icon().and_then(|bytes| {
+                Some(crate::custom::data_url(
+                    hyper_instances::image_mime(&bytes)?,
+                    &bytes,
+                ))
+            }),
         }
     }
 }

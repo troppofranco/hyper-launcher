@@ -196,15 +196,16 @@ impl Instance {
         Ok(fs::write_atomic(&self.dir.join(SESSIONS_FILE), &json)?)
     }
 
-    /// Immagine dell'istanza (PNG), se è stata scelta.
+    /// Immagine dell'istanza (PNG, JPEG, GIF o WebP), se c'è.
     pub fn icon(&self) -> Option<Vec<u8>> {
         std::fs::read(self.dir.join(ICON_FILE)).ok()
     }
 
-    /// Imposta (PNG) o toglie (`None`) l'immagine dell'istanza.
-    pub fn set_icon(&self, png: Option<&[u8]>) -> Result<()> {
+    /// Imposta o toglie (`None`) l'immagine dell'istanza. Il file si chiama
+    /// sempre `icon.png`: il formato vero si ricava dal contenuto ([`image_mime`]).
+    pub fn set_icon(&self, image: Option<&[u8]>) -> Result<()> {
         let path = self.dir.join(ICON_FILE);
-        let Some(png) = png else {
+        let Some(image) = image else {
             return match std::fs::remove_file(&path) {
                 Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
                     Err(CoreError::io(&path, e).into())
@@ -212,12 +213,12 @@ impl Instance {
                 _ => Ok(()),
             };
         };
-        if png.len() > MAX_ICON_BYTES || !png.starts_with(b"\x89PNG\r\n\x1a\n") {
+        if image.len() > MAX_ICON_BYTES || image_mime(image).is_none() {
             return Err(InstanceError::InvalidImage(
-                "the image must be a PNG of at most 1 MB".into(),
+                "the image must be a PNG, JPEG, GIF or WebP of at most 1 MB".into(),
             ));
         }
-        Ok(fs::write_atomic(&path, png)?)
+        Ok(fs::write_atomic(&path, image)?)
     }
 
     /// Storico delle sessioni di gioco (dalla più vecchia); vuoto se manca
@@ -361,9 +362,44 @@ impl InstanceManager {
     }
 }
 
+/// Tipo MIME di un'immagine riconosciuta dai primi byte (PNG, JPEG, GIF,
+/// WebP); `None` per qualsiasi altro contenuto.
+pub fn image_mime(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some("image/png")
+    } else if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
+        Some("image/jpeg")
+    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        Some("image/gif")
+    } else if bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        Some("image/webp")
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn icon_formats() {
+        assert_eq!(image_mime(b"\x89PNG\r\n\x1a\nrest"), Some("image/png"));
+        assert_eq!(image_mime(&[0xff, 0xd8, 0xff, 0xe0]), Some("image/jpeg"));
+        assert_eq!(image_mime(b"GIF89a.."), Some("image/gif"));
+        assert_eq!(image_mime(b"RIFF\0\0\0\0WEBPVP8 "), Some("image/webp"));
+        assert_eq!(image_mime(b"<svg xmlns="), None);
+
+        let dir = tempfile::tempdir().unwrap();
+        let instance = InstanceManager::new(Paths::new(dir.path()))
+            .create("i", "26.3", None)
+            .unwrap();
+        instance.set_icon(Some(&[0xff, 0xd8, 0xff, 0xe0])).unwrap();
+        assert!(instance.icon().is_some());
+        assert!(instance.set_icon(Some(b"<svg/>")).is_err());
+        instance.set_icon(None).unwrap();
+        assert!(instance.icon().is_none());
+    }
 
     #[test]
     fn create_load_list() {
