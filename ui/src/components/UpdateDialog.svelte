@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Finestrella al centro quando esce una nuova build: versione, link alla
+  // Finestrella al centro quando esce una nuova versione: versione, link alla
   // release su GitHub e "Aggiorna e riavvia". Lo sfondo resta sfocato.
   import { t } from '../lib/i18n.svelte';
   import { api } from '../lib/api';
@@ -38,8 +38,8 @@
       <div class="badge" aria-hidden="true"><Icon name="download" size={24} /></div>
       <h2 id="update-title">{t('È disponibile un aggiornamento')}</h2>
       <p id="update-text" class="version">
-        <span class="pill new">{t('Build {n}', { n: update.available ?? '' })}</span>
-        {#if update.current}<span class="muted small">{t('Ora hai la build {n}', { n: update.current })}</span>{/if}
+        <span class="pill new">{t('Versione {v}', { v: update.available ?? '' })}</span>
+        {#if update.current}<span class="muted small">{t('Ora hai la {v}', { v: update.current })}</span>{/if}
       </p>
       {#if update.url}
         <button class="link" onclick={() => update.url && api.openUrl(update.url)}>

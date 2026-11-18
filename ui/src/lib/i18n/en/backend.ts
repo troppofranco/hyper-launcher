@@ -4,7 +4,7 @@ export default {
   'Cartella non valida.': 'Invalid folder.',
   'Link non valido.': 'Invalid link.',
   "Chiudi il gioco (o attendi la fine dell'installazione) prima di aggiornare.": 'Close the game (or wait for the installation to finish) before updating.',
-  'Questa è una build di sviluppo: niente aggiornamenti.': 'This is a development build: no updates.',
+  'Questa è una versione di sviluppo: niente aggiornamenti.': 'This is a development version: no updates.',
   'Hyper Launcher è già aggiornato.': 'Hyper Launcher is already up to date.',
   'Immagine non valida.': 'Invalid image.',
   'Aggiungi prima un account.': 'Add an account first.',

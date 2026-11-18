@@ -46,6 +46,26 @@ pub fn current_build() -> Option<u64> {
     option_env!("HYPER_BUILD").and_then(|b| b.parse().ok())
 }
 
+/// Versione mostrata all'utente per un numero di release: `<major>.<minor>.<N>`
+/// (es. 0.1.12, dalla versione del workspace). `None` = compilazione locale,
+/// che diventa `<versione>-dev`. Il tag delle release resta `build-<N>`: lo
+/// cercano anche i launcher già installati.
+pub fn version_name(build: Option<u64>) -> String {
+    match build {
+        Some(n) => format!(
+            "{}.{}.{n}",
+            env!("CARGO_PKG_VERSION_MAJOR"),
+            env!("CARGO_PKG_VERSION_MINOR")
+        ),
+        None => format!("{}-dev", env!("CARGO_PKG_VERSION")),
+    }
+}
+
+/// Versione di questo binario (vedi [`version_name`]).
+pub fn current_version() -> String {
+    version_name(current_build())
+}
+
 /// Repository GitHub (`owner/nome`) da cui arrivano gli aggiornamenti.
 pub fn update_repo() -> Option<&'static str> {
     option_env!("HYPER_UPDATE_REPO").filter(|r| !r.is_empty())
@@ -189,6 +209,14 @@ pub fn clean_old_setups(dir: &Path, keep: Option<&Path>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn version_names() {
+        let major = env!("CARGO_PKG_VERSION_MAJOR");
+        let minor = env!("CARGO_PKG_VERSION_MINOR");
+        assert_eq!(version_name(Some(12)), format!("{major}.{minor}.12"));
+        assert!(version_name(None).ends_with("-dev"));
+    }
 
     fn release(tag: &str, with_sha1: bool) -> Release {
         let mut json = serde_json::json!({

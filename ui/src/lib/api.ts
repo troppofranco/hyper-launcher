@@ -62,8 +62,8 @@ export interface ExportResult { path: string; linked: number; bundled: number }
 export interface SearchInput { text: string; kind: ContentKind; instance: string | null; gameVersion: string | null; loaders: string[]; categories: string[]; sort: SearchSort; offset: number }
 export interface World { name: string; lastPlayed: number | null }
 export interface News { title: string; date: string; text: string; image: string | null; url: string }
-export interface AppInfo { version: string; build: number | null; dataDir: string; curseforge: boolean }
-export interface UpdateInfo { current: number | null; available: number | null; url: string | null }
+export interface AppInfo { version: string; dev: boolean; dataDir: string; curseforge: boolean }
+export interface UpdateInfo { current: string | null; available: string | null; url: string | null }
 export interface Settings {
   defaultMemoryMb: number;
   javaPath: string;

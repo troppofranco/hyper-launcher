@@ -88,7 +88,7 @@ function simulateLaunch(name: string) {
 }
 
 const commands: Record<string, (args: Record<string, any>) => unknown> = {
-  app_info: () => ({ version: '0.1.0', build: null, dataDir: 'C:\\Users\\utente\\AppData\\Roaming\\HyperLauncher', curseforge: true }),
+  app_info: () => ({ version: '0.1.0-dev', dev: true, dataDir: 'C:\\Users\\utente\\AppData\\Roaming\\HyperLauncher', curseforge: true }),
   list_instances: () => structuredClone(state.instances),
   create_instance: ({ input }) => {
     const loader = input.loader === 'fabric' ? { kind: 'fabric' as const, name: 'Fabric', version: '0.20.1' } : null;
@@ -236,7 +236,7 @@ const commands: Record<string, (args: Record<string, any>) => unknown> = {
     { title: 'New on Java Realms: Grinding & Galaxy', date: '2026-09-28', text: '', image: null, url: 'https://www.minecraft.net/' },
   ],
   // Nel browser: aggiungi ?update all'indirizzo per vedere la finestra di aggiornamento.
-  check_update: () => (location.search.includes('update') ? { current: 10, available: 11, url: 'https://github.com/troppofranco/hyper-launcher/releases/tag/build-11' } : { current: null, available: null, url: null }),
+  check_update: () => (location.search.includes('update') ? { current: '0.1.11', available: '0.1.12', url: 'https://github.com/troppofranco/hyper-launcher/releases/tag/build-12' } : { current: null, available: null, url: null }),
   install_update: () => new Promise(() => {}),
   launch_instance: ({ name }) => { simulateLaunch(name); },
 };

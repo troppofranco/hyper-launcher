@@ -21,8 +21,8 @@ use crate::views::{
 #[tauri::command]
 pub fn app_info(state: State<'_, AppState>) -> AppInfo {
     AppInfo {
-        version: env!("CARGO_PKG_VERSION"),
-        build: self_update::current_build(),
+        version: self_update::current_version(),
+        dev: self_update::current_build().is_none(),
         data_dir: state.paths.root().display().to_string(),
         curseforge: state.curseforge.is_some(),
     }
@@ -469,9 +469,10 @@ pub async fn check_update() -> CmdResult<UpdateView> {
     let url = available
         .zip(self_update::update_repo())
         .map(|(build, repo)| format!("https://github.com/{repo}/releases/tag/build-{build}"));
+    let current = self_update::current_build();
     Ok(UpdateView {
-        current: self_update::current_build(),
-        available,
+        current: current.map(|b| self_update::version_name(Some(b))),
+        available: available.map(|b| self_update::version_name(Some(b))),
         url,
     })
 }
@@ -488,7 +489,7 @@ pub async fn install_update(app: AppHandle, state: State<'_, AppState>) -> CmdRe
         );
     }
     if self_update::current_build().is_none() {
-        return Err("Questa è una build di sviluppo: niente aggiornamenti.".into());
+        return Err("Questa è una versione di sviluppo: niente aggiornamenti.".into());
     }
     let installer = state.installer();
     match self_update::update_to_latest(installer.downloader(), &state.paths.updates_dir(), true)

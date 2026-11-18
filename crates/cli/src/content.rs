@@ -79,7 +79,8 @@ fn curseforge_id(project: &str) -> Result<Option<u32>> {
 }
 
 fn curseforge() -> Result<CurseForge> {
-    CurseForge::new().ok_or_else(|| anyhow::anyhow!("CurseForge non è disponibile in questa build"))
+    CurseForge::new()
+        .ok_or_else(|| anyhow::anyhow!("CurseForge non è disponibile in questa versione"))
 }
 
 fn print_import(import: &PackImport) {

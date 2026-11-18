@@ -9,7 +9,7 @@ use crate::App;
 /// Variabile d'ambiente che disattiva il controllo automatico all'avvio.
 pub const DISABLE_ENV: &str = "HYPER_NO_UPDATE";
 
-pub use self_update::current_build;
+pub use self_update::{current_build, version_name};
 
 /// Se c'è una build più nuova la scarica, la verifica e avvia il setup in
 /// modo silenzioso; restituisce la build installata. In quel caso il
@@ -24,6 +24,7 @@ pub async fn run(app: &App) -> Result<Option<u64>> {
 
 pub fn installing_message(build: u64) -> String {
     format!(
-        "Hyper Launcher si sta aggiornando alla build {build}: tra qualche secondo riesegui il comando."
+        "Hyper Launcher si sta aggiornando alla versione {}: tra qualche secondo riesegui il comando.",
+        version_name(Some(build))
     )
 }

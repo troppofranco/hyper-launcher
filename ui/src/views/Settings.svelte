@@ -53,7 +53,7 @@
     try {
       app.update = await api.checkUpdate();
       app.updateDismissed = false;
-      if (!app.update.current) app.info_(t('Questa è una build di sviluppo: gli aggiornamenti automatici sono disattivati.'));
+      if (!app.update.current) app.info_(t('Questa è una versione di sviluppo: gli aggiornamenti automatici sono disattivati.'));
       else if (!app.update.available) app.info_(t('Hyper Launcher è aggiornato.'));
     } catch (e) {
       app.error(e);
@@ -76,7 +76,7 @@
     {#each sections as [id, label] (id)}
       <button class:on={section === id} onclick={() => (section = id)}>{t(label)}</button>
     {/each}
-    <p class="muted small">Hyper Launcher {app.info?.version}{app.info?.build ? ` · build ${app.info.build}` : ` · ${t('sviluppo')}`}</p>
+    <p class="muted small">Hyper Launcher {app.info?.version}</p>
   </div>
 
   {#if draft}
@@ -140,7 +140,7 @@
         </div>
       {:else}
         <h2>{t('Informazioni')}</h2>
-        <p class="muted">Hyper Launcher {app.info?.version}{app.info?.build ? ` · build ${app.info.build}` : ` (${t('build di sviluppo')})`}. {t('Gli aggiornamenti si installano da soli all’avvio.')}</p>
+        <p class="muted">Hyper Launcher {app.info?.version}{app.info?.dev ? ` (${t('versione di sviluppo')})` : ''}. {t('Gli aggiornamenti si installano da soli all’avvio.')}</p>
         <button class="btn primary self-start" disabled={checking} onclick={checkUpdate}><Icon name="refresh" size={16} /> {checking ? t('Controllo…') : t('Controlla aggiornamenti')}</button>
       {/if}
 

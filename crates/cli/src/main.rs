@@ -17,8 +17,12 @@ use hyper_instances::InstanceManager;
 
 use crate::progress::ProgressView;
 
+/// Versione mostrata da `hyper --version` (es. 0.1.12).
+static VERSION: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(hyper_installer::self_update::current_version);
+
 #[derive(Parser)]
-#[command(name = "hyper", version, about = "Hyper Launcher — CLI headless")]
+#[command(name = "hyper", version = VERSION.as_str(), about = "Hyper Launcher — CLI headless")]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -159,13 +163,16 @@ async fn main() -> Result<()> {
     match cli.command {
         Command::Update => match update::current_build() {
             None => {
-                println!("Build di sviluppo: l'aggiornamento automatico è disattivato.");
+                println!("Versione di sviluppo: l'aggiornamento automatico è disattivato.");
                 Ok(())
             }
             Some(build) => {
                 match update::run(&app).await? {
                     Some(new) => println!("{}", update::installing_message(new)),
-                    None => println!("Hyper Launcher è aggiornato (build {build})."),
+                    None => println!(
+                        "Hyper Launcher è aggiornato (versione {}).",
+                        update::version_name(Some(build))
+                    ),
                 }
                 Ok(())
             }

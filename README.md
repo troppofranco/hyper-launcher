@@ -63,7 +63,7 @@ Set `HYPER_NO_UPDATE=1` to turn off the CLI's automatic update check.
 
 ## Updates
 
-Every commit to `main` publishes a numbered release (`build-<N>`) with the installer and its SHA-1 checksum. The app and the CLI check for newer builds at startup. The downloaded installer is always verified against its checksum before it runs.
+Every commit to `main` publishes a new version (`0.1.N`) with the installer and its SHA-1 checksum. The app and the CLI check for newer versions at startup. The downloaded installer is always verified against its checksum before it runs.
 
 ## Microsoft accounts
 

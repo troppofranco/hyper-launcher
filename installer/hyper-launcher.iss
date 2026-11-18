@@ -1,6 +1,6 @@
 ; Installer Windows di Hyper Launcher (Inno Setup 6).
 ; Compilato dalla GitHub Action `release`:
-;   iscc /DAppVersion=0.1.0 /DBuild=12 installer\hyper-launcher.iss
+;   iscc /DAppVersion=0.1.12 /DBuild=12 installer\hyper-launcher.iss
 ; Installa per l'utente corrente (nessun permesso di amministratore) l'app
 ; grafica `hyper-launcher.exe` (menu Start e, a scelta, desktop) e la CLI
 ; `hyper.exe`, la cui cartella va nel PATH dell'utente. Rieseguito sopra
@@ -18,9 +18,9 @@
 [Setup]
 AppId={{064185E1-75EB-4CFD-B5D8-E5F9741FCCC4}
 AppName=Hyper Launcher
-AppVersion={#AppVersion} (build {#Build})
-AppVerName=Hyper Launcher {#AppVersion} (build {#Build})
-VersionInfoVersion={#AppVersion}.{#Build}
+AppVersion={#AppVersion}
+AppVerName=Hyper Launcher {#AppVersion}
+VersionInfoVersion={#AppVersion}
 ; Se l'app o la CLI sono ancora in uso durante l'aggiornamento, vengono chiuse.
 CloseApplications=force
 RestartApplications=no

@@ -131,18 +131,22 @@ pub struct NewsView {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppInfo {
-    pub version: &'static str,
-    pub build: Option<u64>,
+    /// Es. "0.1.12"; "0.1.0-dev" nelle compilazioni locali.
+    pub version: String,
+    /// Compilazione locale: niente aggiornamenti automatici.
+    pub dev: bool,
     pub data_dir: String,
-    /// CurseForge disponibile (la build ha la chiave API).
+    /// CurseForge disponibile (questa versione ha la chiave API).
     pub curseforge: bool,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateView {
-    pub current: Option<u64>,
-    pub available: Option<u64>,
+    /// `None` nelle compilazioni locali (niente aggiornamenti).
+    pub current: Option<String>,
+    /// Versione più nuova disponibile, se c'è.
+    pub available: Option<String>,
     /// Pagina della release su GitHub (note e file).
     pub url: Option<String>,
 }

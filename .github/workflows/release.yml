@@ -61,8 +61,11 @@ jobs:
         id: version
         shell: bash
         run: |
-          version=$(sed -n '/^\[workspace.package\]/,/^\[/{s/^version *= *"\(.*\)"/\1/p}' Cargo.toml)
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # Versione mostrata: <major>.<minor> del workspace + numero di
+          # release (es. 0.1.12), come `self_update::version_name`. Il tag
+          # resta `build-<N>`: lo cercano anche i launcher già installati.
+          base=$(sed -n '/^\[workspace.package\]/,/^\[/{s/^version *= *"\(.*\)"/\1/p}' Cargo.toml)
+          echo "version=${base%.*}.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
       - name: Build installer
         shell: pwsh
@@ -90,5 +93,5 @@ jobs:
 
           Il file non è firmato: Windows SmartScreen può chiedere conferma (\"Ulteriori informazioni\" → \"Esegui comunque\")."
           gh release create "$TAG" dist/HyperLauncher-Setup.exe dist/HyperLauncher-Setup.exe.sha1 \
-            --title "Hyper Launcher $VERSION (build ${{ github.run_number }})" \
+            --title "Hyper Launcher $VERSION" \
             --notes "$notes" --target "$GITHUB_SHA" --latest
