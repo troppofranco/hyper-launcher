@@ -10,9 +10,9 @@ const now = () => Math.floor(Date.now() / 1000);
 
 const state: { instances: Instance[]; accounts: Account[]; settings: Settings; mods: InstalledContent[] } = {
   instances: [
-    { name: 'Sopravvivenza', version: '26.3', loader: { kind: 'fabric', name: 'Fabric', version: '0.20.1' }, created: now() - 86400 * 3, lastPlayed: now() - 3600, playtimeSecs: 5880, memoryMb: 6144, javaPath: null, jvmArgs: [], syncSettings: true },
-    { name: 'Minecraft 26.3', version: '26.3', loader: null, created: now() - 86400 * 5, lastPlayed: now() - 86400, playtimeSecs: 720, memoryMb: null, javaPath: null, jvmArgs: [], syncSettings: true },
-    { name: 'Snapshot', version: '26.4-snapshot-8', loader: null, created: now() - 3600, lastPlayed: null, playtimeSecs: 0, memoryMb: null, javaPath: null, jvmArgs: [], syncSettings: true },
+    { name: 'Sopravvivenza', version: '26.3', loader: { kind: 'fabric', name: 'Fabric', version: '0.20.1' }, created: now() - 86400 * 3, lastPlayed: now() - 3600, playtimeSecs: 5880, memoryMb: 6144, javaPath: null, jvmArgs: [], syncSettings: true, icon: null },
+    { name: 'Minecraft 26.3', version: '26.3', loader: null, created: now() - 86400 * 5, lastPlayed: now() - 86400, playtimeSecs: 720, memoryMb: null, javaPath: null, jvmArgs: [], syncSettings: true, icon: null },
+    { name: 'Snapshot', version: '26.4-snapshot-8', loader: null, created: now() - 3600, lastPlayed: null, playtimeSecs: 0, memoryMb: null, javaPath: null, jvmArgs: [], syncSettings: true, icon: null },
   ],
   accounts: [
     { name: 'TroppoFranco', uuid: '069a79f4-44e9-4726-a5be-fca90e38aaf5', kind: 'microsoft', default: true },
@@ -45,6 +45,21 @@ function simulateDownload(instance: string, total: number) {
   });
 }
 
+/** Skin finta per il browser: blocchi di colore al posto giusto. */
+function fakeSkin(color: string): string {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const x = c.getContext('2d')!;
+  const fill = (col: string, ...r: [number, number, number, number][]) => { x.fillStyle = col; r.forEach((a) => x.fillRect(...a)); };
+  fill('#c99b75', [0, 8, 32, 8], [8, 0, 16, 8]);
+  fill('#3b2a1e', [8, 0, 8, 8], [8, 8, 8, 2], [0, 8, 32, 2]);
+  fill(color, [16, 20, 24, 12], [40, 20, 16, 12], [32, 52, 16, 12], [20, 16, 16, 4]);
+  fill('#2c3e66', [0, 20, 16, 12], [16, 52, 16, 12], [4, 16, 8, 4]);
+  return c.toDataURL('image/png');
+}
+const skins: { id: string; name: string; slim: boolean; image: string }[] = [];
+let selectedSkin: string | null = null;
+
 function emit(event: string, payload: unknown) {
   handlers.get(event)?.forEach((h) => h(payload));
 }
@@ -76,7 +91,7 @@ const commands: Record<string, (args: Record<string, any>) => unknown> = {
   list_instances: () => structuredClone(state.instances),
   create_instance: ({ input }) => {
     const loader = input.loader === 'fabric' ? { kind: 'fabric' as const, name: 'Fabric', version: '0.20.1' } : null;
-    const inst = { name: input.name || `${loader ? 'Fabric' : 'Minecraft'} ${input.version}`, version: input.version, loader, created: now(), lastPlayed: null, playtimeSecs: 0, memoryMb: null, javaPath: null, jvmArgs: [], syncSettings: true };
+    const inst = { name: input.name || `${loader ? 'Fabric' : 'Minecraft'} ${input.version}`, version: input.version, loader, created: now(), lastPlayed: null, playtimeSecs: 0, memoryMb: null, javaPath: null, jvmArgs: [], syncSettings: true, icon: null };
     state.instances.push(inst);
     return structuredClone(inst);
   },
@@ -147,12 +162,48 @@ const commands: Record<string, (args: Record<string, any>) => unknown> = {
   },
   pack_install: async () => {
     await simulateDownload('', 4);
-    const inst = { name: 'Fabulously Optimized', version: '26.3', loader: { kind: 'fabric' as const, name: 'Fabric', version: '0.20.1' }, created: now(), lastPlayed: null, playtimeSecs: 0, memoryMb: null, javaPath: null, jvmArgs: [], syncSettings: true };
+    const inst = { name: 'Fabulously Optimized', version: '26.3', loader: { kind: 'fabric' as const, name: 'Fabric', version: '0.20.1' }, created: now(), lastPlayed: null, playtimeSecs: 0, memoryMb: null, javaPath: null, jvmArgs: [], syncSettings: true, icon: null };
     state.instances.push(inst);
     return structuredClone(inst);
   },
   pack_import: () => null,
   pack_export: ({ instance }) => ({ path: `C:\\Users\\utente\\Documents\\${instance}.mrpack`, linked: 3, bundled: 1 }),
+  set_instance_icon: ({ name, png }) => {
+    const inst = state.instances.find((i) => i.name === name)!;
+    inst.icon = png;
+    return structuredClone(inst);
+  },
+  list_skins: () => ({ skins: structuredClone(skins), selected: selectedSkin, offline: true }),
+  default_skins: () => [
+    { id: 'default:steve', name: 'Steve', slim: false, image: fakeSkin('#3fa7a0') },
+    { id: 'default:alex', name: 'Alex', slim: true, image: fakeSkin('#5f9e3a') },
+    { id: 'default:kai', name: 'Kai', slim: false, image: fakeSkin('#8a3b8f') },
+  ],
+  add_skin: ({ name, png, slim }) => {
+    const id = `skin-${skins.length}`;
+    skins.push({ id, name, slim, image: png });
+    selectedSkin = id;
+    return { skins: structuredClone(skins), selected: selectedSkin, offline: true };
+  },
+  remove_skin: ({ id }) => {
+    skins.splice(skins.findIndex((s) => s.id === id), 1);
+    if (selectedSkin === id) selectedSkin = null;
+    return { skins: structuredClone(skins), selected: selectedSkin, offline: true };
+  },
+  select_skin: ({ id }) => {
+    selectedSkin = id;
+    return { skins: structuredClone(skins), selected: selectedSkin, offline: true };
+  },
+  list_servers: () => [
+    { name: 'Server degli amici', address: 'mc.example.org', icon: null, instances: ['Sopravvivenza'] },
+    { name: 'Hypixel', address: 'mc.hypixel.net', icon: null, instances: ['Minecraft 26.3'] },
+    { name: 'Vecchio server', address: '10.0.0.5', icon: null, instances: ['Sopravvivenza'] },
+  ],
+  ping_server: async ({ address }) => {
+    await new Promise((r) => setTimeout(r, 600));
+    if (address === '10.0.0.5') throw 'Server non raggiungibile.';
+    return { online: address.includes('hypixel') ? 31245 : 4, max: address.includes('hypixel') ? 200000 : 20, version: address.includes('hypixel') ? 'Requires MC 1.8 / 1.21' : 'Paper 26.3', motd: '', latencyMs: 42 };
+  },
   recent_sessions: () => {
     const day = 86400;
     const t = now();

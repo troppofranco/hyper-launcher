@@ -15,6 +15,7 @@ tauri-build = { version = "2.7", features = [] }
 
 [dependencies]
 anyhow.workspace = true
+base64.workspace = true
 hyper-auth.workspace = true
 hyper-content.workspace = true
 hyper-core.workspace = true

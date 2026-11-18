@@ -21,6 +21,7 @@
   <button class="nav" class:active={view === 'home'} aria-label="Home" onclick={() => app.go({ view: 'home' })}><Icon name="home" size={22} /></button>
   <button class="nav" class:active={view === 'library'} aria-label="Libreria" onclick={() => app.go({ view: 'library' })}><Icon name="library" size={22} /></button>
   <button class="nav" class:active={view === 'explore' || view === 'project'} aria-label="Esplora" title="Esplora" onclick={() => app.go({ view: 'explore' })}><Icon name="compass" size={22} /></button>
+  <button class="nav" class:active={view === 'customize'} aria-label="Personalizzazione" title="Personalizzazione" onclick={() => app.go({ view: 'customize' })}><Icon name="shirt" size={22} /></button>
   <button class="nav" aria-label="Nuova istanza" onclick={() => (app.newInstanceOpen = true)}><Icon name="plus" size={22} /></button>
   {#if shortcuts.length}<div class="sep"></div>{/if}
   {#each shortcuts as inst (inst.name)}
@@ -32,7 +33,7 @@
       title={inst.name}
       onclick={() => app.go({ view: 'instance', name: inst.name })}
     >
-      <InstanceIcon name={inst.name} size={42} />
+      <InstanceIcon name={inst.name} icon={inst.icon} size={42} />
     </button>
   {/each}
   <div class="spacer"></div>
@@ -44,6 +45,10 @@
   .account-wrap { position: relative; }
   .avatar { width: 48px; height: 48px; border-radius: 14px; border: 2px solid var(--accent); background: var(--accent-soft); font-weight: 700; font-size: 17px; font-family: var(--display); }
   .sep { width: 32px; height: 1px; background: #262a34; margin: 6px 0; }
+  .nav { transition: background .2s ease, color .2s ease, transform .15s ease; }
+  .nav:active { transform: scale(.92); }
+  .shortcut { transition: transform .18s cubic-bezier(.2,.8,.2,1); }
+  .shortcut:hover { transform: scale(1.07); }
   .nav { width: 48px; height: 48px; border-radius: 14px; border: 0; background: transparent; color: var(--muted); display: flex; align-items: center; justify-content: center; }
   .nav:hover { background: var(--surface-2); color: var(--text); }
   .nav.active { background: var(--accent); color: #fff; }

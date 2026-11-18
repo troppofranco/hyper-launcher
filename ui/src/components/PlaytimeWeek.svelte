@@ -6,6 +6,7 @@
   // Tempo di gioco degli ultimi 7 giorni, giorno per giorno (fuso orario
   // locale), sommando tutte le istanze. Una partita a cavallo della
   // mezzanotte viene divisa tra i due giorni.
+  let { showTitle = true }: { showTitle?: boolean } = $props();
   const DAYS = 7;
   let sessions = $state<PlaySession[]>([]);
   // Ricalcola i giorni a mezzanotte anche se il launcher resta aperto.
@@ -60,9 +61,9 @@
   const peak = $derived(days.findIndex((d) => d.secs === max && d.secs > 0));
 </script>
 
-<section class="card week" aria-labelledby="week-title">
+<section class="card week" aria-label="Tempo di gioco degli ultimi 7 giorni">
   <div class="head">
-    <h2 id="week-title" class="section-title">Il tuo tempo di gioco</h2>
+    {#if showTitle}<h2 class="section-title">Il tuo tempo di gioco</h2>{/if}
     <div class="total">{playtime(total)}</div>
     <div class="muted small">Ultimi 7 giorni</div>
   </div>

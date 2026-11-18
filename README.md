@@ -25,7 +25,11 @@ verificato con SHA1.
 
 ## Uso
 
-L'app: Home con le istanze recenti e il tempo di gioco della settimana, Libreria, **Esplora**
+L'app: Home con "Gioca subito", modpack in evidenza, i server salvati (con
+giocatori online) e il tempo di gioco della settimana; **Personalizzazione** con
+anteprima 3D delle skin (per gli account offline la skin si vede in gioco
+tramite un resource pack generato dal launcher); immagine personalizzata per
+ogni istanza; Libreria, **Esplora**
 (catalogo Modrinth con installazione delle dipendenze in un clic), pagina
 dell'istanza (Gioca, mod, resource pack e shader con aggiornamenti, mondi,
 console, impostazioni, esporta `.mrpack`), account offline o Microsoft dal

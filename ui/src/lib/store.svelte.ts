@@ -1,6 +1,6 @@
 // Stato globale dell'interfaccia (rune di Svelte 5).
 
-import { api, on, type Account, type AppInfo, type ContentKind, type Instance, type News, type SearchSort, type Settings, type UpdateInfo, type Versions } from './api';
+import { api, on, type Account, type AppInfo, type ContentKind, type Instance, type News, type SearchHit, type SearchSort, type Settings, type UpdateInfo, type Versions } from './api';
 
 export type Route =
   | { view: 'home' }
@@ -8,6 +8,7 @@ export type Route =
   | { view: 'instance'; name: string }
   | { view: 'explore' }
   | { view: 'project'; id: string; kind: ContentKind }
+  | { view: 'customize' }
   | { view: 'settings' };
 
 export interface LaunchState {
@@ -55,6 +56,8 @@ class AppStore {
   });
   /** Download di contenuti in corso, per istanza (`''` = import di un modpack). */
   contentProgress = $state<Record<string, { done: number; total: number }>>({});
+  /** Modpack in evidenza nella Home (caricati una volta per sessione). */
+  featuredPacks = $state<SearchHit[] | null>(null);
   /** Cresce a ogni partita finita: chi mostra statistiche si ricarica. */
   sessionsRev = $state(0);
   toast = $state<{ kind: 'error' | 'info'; text: string } | null>(null);

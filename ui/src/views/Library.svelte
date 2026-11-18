@@ -44,10 +44,10 @@
 
   {#if shown.length}
     <div class="grid">
-      {#each shown as inst (inst.name)}
-        <button class="card tile" onclick={() => app.go({ view: 'instance', name: inst.name })}>
+      {#each shown as inst, i (inst.name)}
+        <button class="card tile enter" style:--i={i} onclick={() => app.go({ view: 'instance', name: inst.name })}>
           <span class="tile-top">
-            <InstanceIcon name={inst.name} size={48} />
+            <InstanceIcon name={inst.name} icon={inst.icon} size={48} />
             <span class="muted small">{app.launches[inst.name] ? 'In corso' : relativeDay(inst.lastPlayed)}</span>
           </span>
           <span class="tile-name">{inst.name}</span>

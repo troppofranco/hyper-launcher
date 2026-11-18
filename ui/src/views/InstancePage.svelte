@@ -8,6 +8,7 @@
   import PlayButton from '../components/PlayButton.svelte';
   import Modal from '../components/Modal.svelte';
   import ContentList from '../components/ContentList.svelte';
+  import { pickFile, squarePng } from '../lib/image';
 
   let { name }: { name: string } = $props();
 
@@ -57,6 +58,25 @@
   $effect(() => {
     if (inst && !inst.loader && (tab === 'mods' || tab === 'shaderpacks')) tab = 'resourcepacks';
   });
+
+  async function setIcon(png: string | null) {
+    try {
+      await api.setInstanceIcon(name, png);
+      await app.refreshInstances();
+    } catch (e) {
+      app.error(e);
+    }
+  }
+
+  async function pickIcon() {
+    const file = await pickFile('image/png,image/jpeg,image/webp,image/gif');
+    if (!file) return;
+    try {
+      await setIcon(await squarePng(file));
+    } catch (e) {
+      app.error(e);
+    }
+  }
 
   async function exportPack() {
     exporting = true;
@@ -118,7 +138,13 @@
 
     <section class="card hero">
       <div class="hero-main">
-        <InstanceIcon name={inst.name} size={64} />
+        <div class="icon-pick">
+          <button class="icon-btn-pick" aria-label="Cambia immagine dell’istanza" title="Cambia immagine" onclick={pickIcon}>
+            <InstanceIcon name={inst.name} icon={inst.icon} size={64} />
+            <span class="icon-overlay"><Icon name="image" size={20} /></span>
+          </button>
+          {#if inst.icon}<button class="icon-reset" aria-label="Togli immagine" title="Togli immagine" onclick={() => setIcon(null)}><Icon name="close" size={12} /></button>{/if}
+        </div>
         <div class="title">
           <div class="sub">
             {#if inst.loader}<span class="loader">{inst.loader.name} {inst.loader.version}</span><span>·</span>{/if}
@@ -138,7 +164,7 @@
 
     <div class="tabs" role="tablist" aria-label="Contenuto istanza">
       {#each tabs as [id, label] (id)}
-        <button role="tab" aria-selected={tab === id} class:on={tab === id} onclick={() => (tab = id)}>{label}</button>
+        <button role="tab" style="transition: color .2s, border-color .2s" aria-selected={tab === id} class:on={tab === id} onclick={() => (tab = id)}>{label}</button>
       {/each}
     </div>
 
@@ -210,6 +236,12 @@
 {/if}
 
 <style>
+  .icon-pick { position: relative; }
+  .icon-btn-pick { position: relative; padding: 0; border: 0; background: none; border-radius: 17px; display: block; }
+  .icon-overlay { position: absolute; inset: 0; border-radius: 17px; background: rgba(8, 9, 12, .55); color: #fff; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity .18s ease; }
+  .icon-btn-pick:hover .icon-overlay, .icon-btn-pick:focus-visible .icon-overlay { opacity: 1; }
+  .icon-reset { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 11px; border: 2px solid var(--surface); background: var(--surface-2); color: var(--muted); display: flex; align-items: center; justify-content: center; padding: 0; opacity: 0; transition: opacity .18s; }
+  .icon-pick:hover .icon-reset { opacity: 1; }
   .back { align-self: flex-start; display: flex; align-items: center; gap: 6px; background: none; border: 0; color: var(--muted); padding: 0; font-size: 13px; }
   .back:hover { color: var(--text); }
   .hero { overflow: hidden; }

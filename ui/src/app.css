@@ -73,3 +73,31 @@ input, select, textarea { user-select: text; }
 .page-head p { margin: 6px 0 0; }
 .error-box { margin: 0; color: #ff8a8e; background: color-mix(in srgb, var(--danger) 14%, transparent); padding: 10px 12px; border-radius: 10px; user-select: text; }
 input[type='range'] { accent-color: var(--accent); }
+
+/* ---------- Movimento ----------
+   Transizioni brevi e morbide; con "riduci animazioni" del sistema
+   operativo quasi tutto diventa istantaneo. */
+:root { --ease: cubic-bezier(.2, .8, .2, 1); }
+.btn { transition: background .18s ease, border-color .18s ease, transform .12s ease, box-shadow .2s ease; }
+.btn:active:not(:disabled) { transform: scale(.97); }
+.btn.primary:hover:not(:disabled) { box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 35%, transparent); }
+.input { transition: border-color .18s ease, box-shadow .18s ease; }
+.input:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+button.card, .card.res, .card.tile, .card.quick-card, .card.world {
+  transition: transform .22s var(--ease), border-color .2s ease, box-shadow .22s ease, background .2s ease;
+}
+button.card:hover, .card.res:hover, .card.tile:hover, .card.quick-card:hover, .card.world:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, .35);
+}
+button.card:active { transform: translateY(-1px) scale(.99); }
+.switch { transition: background .2s ease; }
+.switch::after { transition: left .22s var(--ease); }
+/* Comparsa a cascata: class="enter" con style:--i={indice}. */
+.enter { animation: rise .45s var(--ease) backwards; animation-delay: calc(min(var(--i, 0), 12) * 45ms); }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.skeleton { background: linear-gradient(90deg, var(--surface) 0%, var(--surface-2) 50%, var(--surface) 100%); background-size: 200% 100%; animation: shimmer 1.3s linear infinite; }
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}

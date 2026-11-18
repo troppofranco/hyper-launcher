@@ -1,14 +1,18 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import Icon from './Icon.svelte';
+  import { fade, scale } from 'svelte/transition';
+  import { cubicOut } from 'svelte/easing';
+  import { prefersReducedMotion } from 'svelte/motion';
+  const d = (ms: number) => (prefersReducedMotion.current ? 0 : ms);
 
   let { title, onclose, children, width = 560 }: { title: string; onclose: () => void; children: Snippet; width?: number } = $props();
   const id = `modal-${Math.random().toString(36).slice(2)}`;
 </script>
 
 <svelte:window onkeydown={(e) => e.key === 'Escape' && onclose()} />
-<div class="overlay">
-  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby={id} style:width="{width}px">
+<div class="overlay" transition:fade|global={{ duration: d(160) }}>
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby={id} style:width="{width}px" transition:scale|global={{ start: 0.95, duration: d(220), easing: cubicOut }}>
     <div class="head">
       <h2 {id}>{title}</h2>
       <button class="x" aria-label="Chiudi" onclick={onclose}><Icon name="close" size={18} /></button>

@@ -6,6 +6,7 @@
 
 mod commands;
 mod content;
+mod custom;
 mod launch;
 mod state;
 mod views;
@@ -60,6 +61,14 @@ fn main() {
             content::pack_export,
             commands::list_worlds,
             commands::recent_sessions,
+            custom::set_instance_icon,
+            custom::list_skins,
+            custom::default_skins,
+            custom::add_skin,
+            custom::remove_skin,
+            custom::select_skin,
+            custom::list_servers,
+            custom::ping_server,
             commands::open_folder,
             commands::open_url,
             commands::news,

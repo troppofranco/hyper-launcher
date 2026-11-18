@@ -6,6 +6,8 @@ pub mod console;
 mod content;
 mod launch;
 mod prepare;
+pub mod servers;
+pub mod skins;
 
 use std::path::{Path, PathBuf};
 
@@ -18,6 +20,11 @@ pub use launch::{LaunchCommand, LaunchOptions, build_command, prepare_natives};
 pub use prepare::{PreparedLaunch, RunningGame, install, prepare_launch, resolve_java};
 
 pub use hyper_core::MIN_MEMORY_MB;
+
+/// Immagine scelta per l'istanza (accanto a `instance.toml`).
+const ICON_FILE: &str = "icon.png";
+/// L'interfaccia la riduce a 256×256 prima di salvarla: basta e avanza.
+const MAX_ICON_BYTES: usize = 1024 * 1024;
 
 /// Storico delle partite di un'istanza (accanto a `instance.toml`).
 const SESSIONS_FILE: &str = "sessions.json";
@@ -54,6 +61,9 @@ pub enum InstanceError {
 
     #[error("Java not found: {0}")]
     JavaNotFound(PathBuf),
+
+    #[error("invalid image: {0}")]
+    InvalidImage(String),
 
     #[error("{0:?} is not a valid content file name")]
     InvalidContentFile(String),
@@ -184,6 +194,30 @@ impl Instance {
         sessions.drain(..excess);
         let json = serde_json::to_vec(&sessions).expect("sessions serialize");
         Ok(fs::write_atomic(&self.dir.join(SESSIONS_FILE), &json)?)
+    }
+
+    /// Immagine dell'istanza (PNG), se è stata scelta.
+    pub fn icon(&self) -> Option<Vec<u8>> {
+        std::fs::read(self.dir.join(ICON_FILE)).ok()
+    }
+
+    /// Imposta (PNG) o toglie (`None`) l'immagine dell'istanza.
+    pub fn set_icon(&self, png: Option<&[u8]>) -> Result<()> {
+        let path = self.dir.join(ICON_FILE);
+        let Some(png) = png else {
+            return match std::fs::remove_file(&path) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                    Err(CoreError::io(&path, e).into())
+                }
+                _ => Ok(()),
+            };
+        };
+        if png.len() > MAX_ICON_BYTES || !png.starts_with(b"\x89PNG\r\n\x1a\n") {
+            return Err(InstanceError::InvalidImage(
+                "the image must be a PNG of at most 1 MB".into(),
+            ));
+        }
+        Ok(fs::write_atomic(&path, png)?)
     }
 
     /// Storico delle sessioni di gioco (dalla più vecchia); vuoto se manca

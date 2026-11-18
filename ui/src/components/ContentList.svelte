@@ -94,8 +94,8 @@
   {#if loading && !items.length}
     <p class="muted pad">Lettura dei file e controllo su Modrinth…</p>
   {/if}
-  {#each shown as item (item.file)}
-    <div class="row" class:off={!item.enabled}>
+  {#each shown as item, i (item.file)}
+    <div class="row enter" style:--i={i} class:off={!item.enabled}>
       <button class="who" disabled={!item.projectId} onclick={() => item.projectId && app.openProject(item.projectId, kind, instance)}>
         <ProjectIcon url={item.iconUrl} name={item.title ?? item.name} size={40} />
         <span class="meta">

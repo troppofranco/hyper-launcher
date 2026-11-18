@@ -6,8 +6,8 @@
 
 <aside class="news scroll" aria-label="Notizie Minecraft">
   <h2 class="label">Notizie Minecraft</h2>
-  {#each app.news as n (n.url + n.title)}
-    <button class="item" onclick={() => api.openUrl(n.url)}>
+  {#each app.news as n, i (n.url + n.title)}
+    <button class="item enter" style:--i={i} onclick={() => api.openUrl(n.url)}>
       {#if n.image}
         <img src={n.image} alt="" loading="lazy" />
       {:else}

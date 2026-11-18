@@ -154,8 +154,8 @@
     {#if failed}<p class="error-box" role="alert">Modrinth non risponde: {failed}</p>{/if}
 
     <div class="results" class:grid={ex.layout === 'grid'}>
-      {#each hits as hit (hit.id)}
-        <article class="card res">
+      {#each hits as hit, i (hit.id)}
+        <article class="card res enter" style:--i={i % 20}>
           {#if ex.layout === 'grid'}
             <button class="cover" style:background={cover(hit)} aria-label="Apri {hit.title}" onclick={() => app.openProject(hit.id, ex.kind)}>
               {#if hit.image}<img src={hit.image} alt="" loading="lazy" />{/if}

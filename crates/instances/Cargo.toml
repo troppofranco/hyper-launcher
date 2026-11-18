@@ -13,6 +13,9 @@ hyper-installer.workspace = true
 hyper-sync.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+fastnbt.workspace = true
+tokio.workspace = true
+zip.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 

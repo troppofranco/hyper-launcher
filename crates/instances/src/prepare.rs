@@ -136,6 +136,19 @@ pub async fn prepare_launch(
         }
     });
     tracing::debug!(natives, "native libraries extracted");
+    // Skin per gli account offline (con Microsoft vale quella del profilo).
+    let skin = session
+        .access_token
+        .is_none()
+        .then(|| {
+            let library = crate::skins::SkinLibrary::new(installer.paths());
+            let skin = library.selected(&session.uuid.to_string())?;
+            library.png(&skin.id).ok()
+        })
+        .flatten();
+    if let Err(e) = crate::skins::apply_to_instance(instance, skin.as_deref()) {
+        tracing::warn!(error = %e, "cannot apply the skin");
+    }
 
     let command = build_command(
         instance,

@@ -18,7 +18,13 @@ export interface Instance {
   javaPath: string | null;
   jvmArgs: string[];
   syncSettings: boolean;
+  /** Immagine scelta dall'utente (data: URL). */
+  icon: string | null;
 }
+export interface Skin { id: string; name: string; slim: boolean; image: string }
+export interface Skins { skins: Skin[]; selected: string | null; offline: boolean }
+export interface SavedServer { name: string; address: string; icon: string | null; instances: string[] }
+export interface ServerStatus { online: number; max: number; version: string; motd: string; latencyMs: number }
 export interface Account { name: string; uuid: string; kind: 'offline' | 'microsoft'; default: boolean }
 export interface VersionInfo { id: string; kind: string; releaseTime: string }
 export interface Versions { latestRelease: string; latestSnapshot: string; versions: VersionInfo[] }
@@ -114,6 +120,14 @@ export const api = {
   packImport: () => call<Instance | null>('pack_import'),
   packExport: (instance: string) => call<ExportResult | null>('pack_export', { instance }),
   listWorlds: (name: string) => call<World[]>('list_worlds', { name }),
+  setInstanceIcon: (name: string, png: string | null) => call<Instance>('set_instance_icon', { name, png }),
+  listSkins: () => call<Skins>('list_skins'),
+  defaultSkins: () => call<Skin[]>('default_skins'),
+  addSkin: (name: string, png: string, slim: boolean) => call<Skins>('add_skin', { name, png, slim }),
+  removeSkin: (id: string) => call<Skins>('remove_skin', { id }),
+  selectSkin: (id: string | null) => call<Skins>('select_skin', { id }),
+  listServers: () => call<SavedServer[]>('list_servers'),
+  pingServer: (address: string) => call<ServerStatus>('ping_server', { address }),
   recentSessions: (days: number) => call<PlaySession[]>('recent_sessions', { days }),
   openFolder: (name: string | null, folder: string) => call<void>('open_folder', { name, folder }),
   openUrl: (url: string) => call<void>('open_url', { url }),

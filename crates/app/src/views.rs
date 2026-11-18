@@ -28,6 +28,8 @@ pub struct InstanceView {
     pub java_path: Option<String>,
     pub jvm_args: Vec<String>,
     pub sync_settings: bool,
+    /// Immagine scelta dall'utente (`data:` URL), se c'è.
+    pub icon: Option<String>,
 }
 
 impl InstanceView {
@@ -48,6 +50,9 @@ impl InstanceView {
             java_path: c.java_path.as_ref().map(|p| p.display().to_string()),
             jvm_args: c.jvm_args.clone(),
             sync_settings: c.sync_settings,
+            icon: instance
+                .icon()
+                .map(|png| crate::custom::data_url("image/png", &png)),
         }
     }
 }
