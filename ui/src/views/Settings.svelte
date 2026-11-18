@@ -52,6 +52,7 @@
     checking = true;
     try {
       app.update = await api.checkUpdate();
+      app.updateDismissed = false;
       if (!app.update.current) app.info_(t('Questa è una build di sviluppo: gli aggiornamenti automatici sono disattivati.'));
       else if (!app.update.available) app.info_(t('Hyper Launcher è aggiornato.'));
     } catch (e) {

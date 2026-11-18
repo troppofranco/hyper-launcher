@@ -51,6 +51,8 @@ class AppStore {
   info = $state<AppInfo | null>(null);
   news = $state<News[]>([]);
   update = $state<UpdateInfo | null>(null);
+  /** "Più tardi" sulla finestra di aggiornamento: non la ripropone in questa sessione. */
+  updateDismissed = $state(false);
   launches = $state<Record<string, LaunchState>>({});
   logs = $state<Record<string, LogLine[]>>({});
   explore = $state<ExploreState>({

@@ -143,6 +143,8 @@ pub struct AppInfo {
 pub struct UpdateView {
     pub current: Option<u64>,
     pub available: Option<u64>,
+    /// Pagina della release su GitHub (note e file).
+    pub url: Option<String>,
 }
 
 #[derive(Serialize)]

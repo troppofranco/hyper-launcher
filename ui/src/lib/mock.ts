@@ -235,8 +235,9 @@ const commands: Record<string, (args: Record<string, any>) => unknown> = {
     { title: 'Halloween on Realms', date: '2026-10-30', text: '12 new maps to send a shiver down your spine!', image: null, url: 'https://www.minecraft.net/' },
     { title: 'New on Java Realms: Grinding & Galaxy', date: '2026-09-28', text: '', image: null, url: 'https://www.minecraft.net/' },
   ],
-  check_update: () => ({ current: null, available: null }),
-  install_update: () => undefined,
+  // Nel browser: aggiungi ?update all'indirizzo per vedere la finestra di aggiornamento.
+  check_update: () => (location.search.includes('update') ? { current: 10, available: 11, url: 'https://github.com/troppofranco/hyper-launcher/releases/tag/build-11' } : { current: null, available: null, url: null }),
+  install_update: () => new Promise(() => {}),
   launch_instance: ({ name }) => { simulateLaunch(name); },
 };
 

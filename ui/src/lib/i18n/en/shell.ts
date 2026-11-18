@@ -27,7 +27,10 @@ export default {
   'Preparazione': 'Preparing',
   'Preparazione…': 'Preparing…',
   'File {fatti} di {totale}': 'File {fatti} of {totale}',
-  'È disponibile una nuova versione di Hyper Launcher (build {build}).': 'A new version of Hyper Launcher is available (build {build}).',
+  'È disponibile un aggiornamento': 'An update is available',
+  'Build {n}': 'Build {n}',
+  'Ora hai la build {n}': 'You have build {n}',
+  'Novità su GitHub': 'What’s new on GitHub',
   'Aggiornamento…': 'Updating…',
   'Aggiorna e riavvia': 'Update and restart',
 } satisfies Record<string, string>;

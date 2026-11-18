@@ -465,9 +465,14 @@ pub async fn news(state: State<'_, AppState>) -> CmdResult<Vec<NewsView>> {
 
 #[tauri::command]
 pub async fn check_update() -> CmdResult<UpdateView> {
+    let available = self_update::available().await.cmd()?.map(|u| u.build);
+    let url = available
+        .zip(self_update::update_repo())
+        .map(|(build, repo)| format!("https://github.com/{repo}/releases/tag/build-{build}"));
     Ok(UpdateView {
         current: self_update::current_build(),
-        available: self_update::available().await.cmd()?.map(|u| u.build),
+        available,
+        url,
     })
 }
 

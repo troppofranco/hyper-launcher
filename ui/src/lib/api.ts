@@ -63,7 +63,7 @@ export interface SearchInput { text: string; kind: ContentKind; instance: string
 export interface World { name: string; lastPlayed: number | null }
 export interface News { title: string; date: string; text: string; image: string | null; url: string }
 export interface AppInfo { version: string; build: number | null; dataDir: string; curseforge: boolean }
-export interface UpdateInfo { current: number | null; available: number | null }
+export interface UpdateInfo { current: number | null; available: number | null; url: string | null }
 export interface Settings {
   defaultMemoryMb: number;
   javaPath: string;

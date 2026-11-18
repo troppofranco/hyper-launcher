@@ -3,7 +3,7 @@
   import Titlebar from './components/Titlebar.svelte';
   import Sidebar from './components/Sidebar.svelte';
   import NewsPanel from './components/NewsPanel.svelte';
-  import UpdateBanner from './components/UpdateBanner.svelte';
+  import UpdateDialog from './components/UpdateDialog.svelte';
   import Toast from './components/Toast.svelte';
   import NewInstanceDialog from './components/NewInstanceDialog.svelte';
   import AddAccountDialog from './components/AddAccountDialog.svelte';
@@ -45,7 +45,6 @@
   {#if ready && app.settings && !app.settings.setupDone}
     <Onboarding />
   {:else}
-  <UpdateBanner />
   <div class="body">
     <Sidebar />
     <main class="content scroll">
@@ -84,6 +83,7 @@
 {#if app.newInstanceOpen}<NewInstanceDialog />{/if}
 {#if app.addAccountOpen}<AddAccountDialog />{/if}
 {#if app.blockedFiles?.length}<BlockedFilesDialog />{/if}
+<UpdateDialog />
 <Toast />
 
 <style>
