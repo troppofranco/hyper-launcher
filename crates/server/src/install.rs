@@ -109,7 +109,7 @@ pub async fn versions(installer: &Installer, kind: ServerKind) -> Result<Vec<Str
     }
 }
 
-fn check_sha256(bytes: &[u8], expected: &str, file: &str) -> Result<()> {
+pub(crate) fn check_sha256(bytes: &[u8], expected: &str, file: &str) -> Result<()> {
     let actual = hex::encode(Sha256::digest(bytes));
     if actual.eq_ignore_ascii_case(expected.trim()) {
         Ok(())
@@ -178,6 +178,8 @@ pub async fn create(
         autostart: request.keep_running && request.autostart,
         created: hyper_core::unix_now(),
         java_component: String::new(),
+        playit_tunnel: None,
+        playit_address: None,
     };
     config.validate_settings()?;
     if manager.exists(&request.name) {

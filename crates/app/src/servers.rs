@@ -9,7 +9,7 @@ use hyper_server::players::{BannedEntry, PlayerEntry};
 use hyper_server::properties::{CommonSettings, Properties};
 use hyper_server::protocol::{RunningStatus, StatsPoint};
 use hyper_server::{
-    HostClient, ServerConfig, ServerKind, ServerManager, autostart, files, plugins,
+    HostClient, ServerConfig, ServerKind, ServerManager, autostart, files, playit, plugins,
 };
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
@@ -66,6 +66,8 @@ pub struct ServerInfoView {
     pub address: String,
     /// Immagine del server (`server-icon.png`) come `data:` URL.
     pub icon: Option<String>,
+    /// Indirizzo pubblico (playit.gg), se l'accesso da internet è attivo.
+    pub public_address: Option<String>,
 }
 
 /// Vista dei server: una sola richiesta all'host e un solo indirizzo di rete
@@ -105,6 +107,10 @@ fn view(
             .map_or(20, |p| p.common().max_players),
     };
     ServerInfoView {
+        public_address: config
+            .playit_address
+            .clone()
+            .filter(|_| config.playit_tunnel.is_some()),
         icon: manager
             .icon(&config.name)
             .map(|png| crate::custom::data_url("image/png", &png)),
@@ -208,6 +214,8 @@ pub async fn server_delete(state: State<'_, AppState>, name: String) -> CmdResul
     if is_running(&state, &name).await {
         return Err("Ferma il server prima di eliminarlo.".into());
     }
+    // Il tunnel playit va tolto dall'account, non solo dimenticato.
+    playit::disable(&manager(&state), &name).await.cmd()?;
     manager(&state).delete(&name).cmd()?;
     sync_autostart(&state);
     Ok(())
@@ -374,7 +382,7 @@ pub fn server_properties(state: State<'_, AppState>, name: String) -> CmdResult<
 /// Salva le impostazioni comuni in `server.properties` (conservando il
 /// resto del file) e allinea la porta nella configurazione del launcher.
 #[tauri::command]
-pub fn server_save_properties(
+pub async fn server_save_properties(
     state: State<'_, AppState>,
     name: String,
     properties: CommonSettings,
@@ -388,6 +396,13 @@ pub fn server_save_properties(
     if config.port != properties.port {
         config.port = properties.port;
         manager.save(&config).cmd()?;
+        // Il tunnel playit punta alla porta vecchia: si rifà sulla nuova.
+        if config.playit_tunnel.is_some() {
+            playit::disable(&manager, &name).await.cmd()?;
+            playit::enable(&state.installer(), &state.paths, &manager, &name, |_| {})
+                .await
+                .cmd()?;
+        }
     }
     Ok(())
 }
@@ -515,6 +530,78 @@ pub async fn server_plugin_delete(
     let (dir, _) = paper_server(&state, &name)?;
     plugins_unlocked(&state, &name).await?;
     plugins::remove(&dir, &file).cmd()
+}
+
+// ---------- Accesso da internet (playit.gg) ----------
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayitStatus {
+    /// playit.gg è collegato a questo PC (chiave nel keyring).
+    pub connected: bool,
+}
+
+#[tauri::command]
+pub fn playit_status() -> CmdResult<PlayitStatus> {
+    Ok(PlayitStatus {
+        connected: playit::secret().cmd()?.is_some(),
+    })
+}
+
+/// Collega playit.gg: apre il browser sulla pagina di approvazione e
+/// aspetta (evento `playit-claim` con lo stato) finché l'utente approva.
+#[tauri::command]
+pub async fn playit_connect(app: AppHandle) -> CmdResult<()> {
+    use tauri_plugin_opener::OpenerExt;
+    let code = playit::claim_code();
+    app.opener()
+        .open_url(playit::claim_url(&code), None::<&str>)
+        .cmd()?;
+    playit::Client::new()
+        .cmd()?
+        .claim(&code, |status| {
+            let _ = app.emit("playit-claim", status);
+        })
+        .await
+        .cmd()
+}
+
+/// Scollega playit.gg da questo PC, togliendo prima i tunnel dei server.
+#[tauri::command]
+pub async fn playit_disconnect(state: State<'_, AppState>) -> CmdResult<()> {
+    playit::disconnect(&manager(&state)).await.cmd()
+}
+
+#[derive(Clone, Serialize)]
+struct PlayitProgress<'a> {
+    name: &'a str,
+    stage: playit::EnableStage,
+}
+
+/// Rende il server raggiungibile da internet (evento `playit-progress`).
+#[tauri::command]
+pub async fn server_playit_enable(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    name: String,
+) -> CmdResult<ServerInfoView> {
+    let manager = manager(&state);
+    playit::enable(&state.installer(), &state.paths, &manager, &name, |stage| {
+        let _ = app.emit("playit-progress", PlayitProgress { name: &name, stage });
+    })
+    .await
+    .cmd()?;
+    info(&state, manager.load(&name).cmd()?).await
+}
+
+#[tauri::command]
+pub async fn server_playit_disable(
+    state: State<'_, AppState>,
+    name: String,
+) -> CmdResult<ServerInfoView> {
+    let manager = manager(&state);
+    playit::disable(&manager, &name).await.cmd()?;
+    info(&state, manager.load(&name).cmd()?).await
 }
 
 /// Alla chiusura del launcher: ferma i server senza "resta acceso".

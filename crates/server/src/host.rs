@@ -86,6 +86,8 @@ struct Host {
     token: String,
     servers: Mutex<HashMap<String, Running>>,
     last_activity: Mutex<Instant>,
+    /// Agent playit (uno per tutti i server con tunnel).
+    agent: Mutex<Option<tokio::process::Child>>,
 }
 
 impl Host {
@@ -208,6 +210,7 @@ impl Host {
         servers.insert(name.to_owned(), running);
         drop(servers);
         self.touch();
+        self.sync_agent();
         Ok(())
     }
 
@@ -311,7 +314,37 @@ impl Host {
     }
 
     /// Campiona CPU, RAM, giocatori e latenza di ogni server acceso.
+    /// Avvia l'agent playit se un server acceso ha il tunnel (e playit.gg è
+    /// collegato), lo ferma quando nessuno ne ha più bisogno.
+    fn sync_agent(&self) {
+        let running: Vec<String> = lock(&self.servers)
+            .iter()
+            .filter(|(_, r)| !r.exited.load(Ordering::Relaxed))
+            .map(|(n, _)| n.clone())
+            .collect();
+        // Si rilegge la configurazione: il tunnel si può attivare o togliere
+        // anche a server acceso.
+        let needed = running.iter().any(|n| {
+            self.manager
+                .load(n)
+                .is_ok_and(|c| c.playit_tunnel.is_some())
+        });
+        let mut agent = lock(&self.agent);
+        let alive = agent
+            .as_mut()
+            .is_some_and(|c| matches!(c.try_wait(), Ok(None)));
+        if needed && !alive {
+            match crate::playit::spawn_agent(&self.paths) {
+                Ok(child) => *agent = Some(child),
+                Err(e) => tracing::warn!(error = %e, "playit agent not started"),
+            }
+        } else if !needed && let Some(mut child) = agent.take() {
+            let _ = child.start_kill();
+        }
+    }
+
     async fn sample(&self, system: &mut System) {
+        self.sync_agent();
         let targets: Vec<(String, u32, u16)> = lock(&self.servers)
             .iter()
             .filter(|(_, r)| !r.exited.load(Ordering::Relaxed))
@@ -442,6 +475,7 @@ pub async fn run(paths: Paths, autostart: bool) -> Result<()> {
         token,
         servers: Mutex::new(HashMap::new()),
         last_activity: Mutex::new(Instant::now()),
+        agent: Mutex::new(None),
     });
     if autostart {
         for config in host

@@ -74,8 +74,8 @@
           <div class="bottom">
             <span class="info">
               {#if s.running}<span>{t('{n} / {max} giocatori', { n: s.players, max: s.maxPlayers })}</span><span class="dot">·</span>{/if}
-              <span class="addr">{s.address}</span>
-              <button class="link" aria-label={t('Copia l’indirizzo di {nome}', { nome: s.name })} onclick={() => copyText(s.address)}>{t('Copia')}</button>
+              <span class="addr" title={s.publicAddress ? t('Indirizzo da internet (playit.gg)') : t('Indirizzo nella rete di casa')}>{s.publicAddress ?? s.address}</span>
+              <button class="link" aria-label={t('Copia l’indirizzo di {nome}', { nome: s.name })} onclick={() => copyText(s.publicAddress ?? s.address)}>{t('Copia')}</button>
             </span>
             <span class="actions">
               <button class="btn small" onclick={() => app.go({ view: 'server', name: s.name })}>{t('Apri')}</button>

@@ -122,6 +122,8 @@ interface Events {
   'msa-code': DeviceCodeEvent;
   'content-progress': ContentProgressEvent;
   'server-progress': ServerProgressEvent;
+  'playit-claim': PlayitClaimStatus;
+  'playit-progress': PlayitProgressEvent;
 }
 
 export const inTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -210,6 +212,14 @@ export const api = {
   serverUpdate: (name: string, update: ServerUpdate) => call<ServerInfo>('server_update', { name, update }),
   /** Imposta (PNG 64×64 in base64) o toglie l'immagine del server. */
   serverSetIcon: (name: string, png: string | null) => call<ServerInfo>('server_set_icon', { name, png }),
+  /** playit.gg collegato a questo PC? */
+  playitStatus: () => call<{ connected: boolean }>('playit_status'),
+  /** Apre il browser per approvare e aspetta (evento `playit-claim`). */
+  playitConnect: () => call<void>('playit_connect'),
+  playitDisconnect: () => call<void>('playit_disconnect'),
+  /** Rende il server raggiungibile da internet (evento `playit-progress`). */
+  serverPlayitEnable: (name: string) => call<ServerInfo>('server_playit_enable', { name }),
+  serverPlayitDisable: (name: string) => call<ServerInfo>('server_playit_disable', { name }),
   serverPlayers: (name: string) => call<ServerPlayers>('server_players', { name }),
   serverProperties: (name: string) => call<ServerProperties>('server_properties', { name }),
   serverSaveProperties: (name: string, properties: ServerProperties) => call<void>('server_save_properties', { name, properties }),
@@ -247,6 +257,8 @@ export interface ServerInfo {
   address: string;
   /** Immagine del server (PNG 64×64 come `data:` URL): logo qui e icona nel gioco. */
   icon: string | null;
+  /** Indirizzo pubblico (playit.gg) se l'accesso da internet è attivo. */
+  publicAddress: string | null;
 }
 export interface NewServer { name: string; kind: ServerKind; version: string; memoryMb: number; port: number; keepRunning: boolean; autostart: boolean; eula: boolean }
 export interface ServerUpdate { memoryMb: number; keepRunning: boolean; autostart: boolean }
@@ -280,6 +292,9 @@ export interface ServerProperties {
   port: number;
 }
 export interface ServerProgressEvent { name: string; stage: 'download' | 'java' | 'setup'; done: number; total: number }
+/** Stato dell'approvazione su playit.gg (nel browser). */
+export type PlayitClaimStatus = 'WaitingForUserVisit' | 'WaitingForUser' | 'UserAccepted' | 'UserRejected';
+export interface PlayitProgressEvent { name: string; stage: 'agent' | 'tunnel' | 'address' }
 
 /** Comandi della finestra (barra del titolo personalizzata). */
 export async function windowAction(action: 'minimize' | 'maximize' | 'close') {

@@ -44,6 +44,87 @@ pub enum ServerCommand {
         #[arg(long)]
         autostart: bool,
     },
+    /// Accesso da internet con playit.gg.
+    Playit {
+        #[command(subcommand)]
+        command: PlayitCommand,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum PlayitCommand {
+    /// Collega playit.gg: apri il link stampato e approva nel browser.
+    Connect,
+    /// Agent collegato e tunnel.
+    Status,
+    /// Crea il tunnel per un server (Minecraft Java verso la sua porta).
+    Tunnel { name: String },
+    /// Elimina il tunnel di un server.
+    Untunnel { name: String },
+    /// Scollega playit.gg da questo PC.
+    Forget,
+    /// Esegue l'agent in primo piano (per le prove; di solito lo avvia l'host).
+    Agent,
+}
+
+async fn playit_cmd(app: &App, manager: &ServerManager, cmd: PlayitCommand) -> Result<()> {
+    use hyper_server::playit;
+    let client = playit::Client::new()?;
+    let key = || -> Result<_> {
+        playit::secret()?
+            .ok_or_else(|| anyhow::anyhow!("playit.gg non collegato: hyper server playit connect"))
+    };
+    match cmd {
+        PlayitCommand::Connect => {
+            let code = playit::claim_code();
+            println!(
+                "Apri questo link e approva Hyper Launcher:\n  {}",
+                playit::claim_url(&code)
+            );
+            client.claim(&code, |s| eprintln!("  stato: {s:?}")).await?;
+            println!("playit.gg collegato.");
+        }
+        PlayitCommand::Status => {
+            let data = client.rundata(&key()?).await?;
+            println!("agent {}", data.agent_id);
+            for t in data.tunnels {
+                println!(
+                    "  tunnel {} {:?} → {}{}",
+                    t.id,
+                    t.name,
+                    t.display_address,
+                    t.disabled_reason
+                        .map(|r| format!(" (disattivato: {r})"))
+                        .unwrap_or_default()
+                );
+            }
+            for p in data.pending {
+                println!("  in preparazione {}: {}", p.id, p.status_msg);
+            }
+        }
+        PlayitCommand::Tunnel { name } => {
+            let address = playit::enable(&app.installer()?, &app.paths, manager, &name, |s| {
+                eprintln!("  {s:?}…")
+            })
+            .await?;
+            println!("Raggiungibile da internet: {address}");
+        }
+        PlayitCommand::Untunnel { name } => {
+            playit::disable(manager, &name).await?;
+            println!("Accesso da internet disattivato.");
+        }
+        PlayitCommand::Agent => {
+            playit::ensure_agent(&app.installer()?, &app.paths).await?;
+            let mut child = playit::spawn_agent(&app.paths)?;
+            println!("agent playit avviato (Ctrl+C per fermarlo)");
+            child.wait().await?;
+        }
+        PlayitCommand::Forget => {
+            playit::disconnect(manager).await?;
+            println!("playit.gg scollegato da questo PC.");
+        }
+    }
+    Ok(())
 }
 
 pub async fn server(app: &App, cmd: ServerCommand) -> Result<()> {
@@ -133,6 +214,7 @@ pub async fn server(app: &App, cmd: ServerCommand) -> Result<()> {
         ServerCommand::Host { autostart } => {
             hyper_server::host::run(app.paths.clone(), autostart).await?;
         }
+        ServerCommand::Playit { command } => playit_cmd(app, &manager, command).await?,
     }
     Ok(())
 }

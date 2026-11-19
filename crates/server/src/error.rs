@@ -66,6 +66,9 @@ pub enum ServerError {
     #[error("not a text file")]
     NotText,
 
+    #[error("{0}")]
+    Playit(String),
+
     #[error("the server host is not responding")]
     HostUnavailable,
 

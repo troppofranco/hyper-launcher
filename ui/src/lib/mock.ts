@@ -164,7 +164,7 @@ function statsPoint(s: MockServer, t: number): StatsPoint {
 
 const servers: MockServer[] = [
   {
-    info: { name: 'Server degli amici', kind: 'paper', version: '1.21.4', build: 232, memoryMb: 4096, port: 25565, keepRunning: true, autostart: false, created: now() - 86400 * 20, running: true, startedAt: now() - 8040, players: 2, maxPlayers: 20, address: '192.168.1.20:25565', icon: null },
+    info: { name: 'Server degli amici', kind: 'paper', version: '1.21.4', build: 232, memoryMb: 4096, port: 25565, keepRunning: true, autostart: false, created: now() - 86400 * 20, running: true, startedAt: now() - 8040, players: 2, maxPlayers: 20, address: '192.168.1.20:25565', icon: null, publicAddress: null },
     props: defaultProps(25565),
     players: {
       online: ['Marco', 'Giulia'],
@@ -192,7 +192,7 @@ const servers: MockServer[] = [
     ],
   },
   {
-    info: { name: 'Survival vanilla', kind: 'vanilla', version: '1.21.4', build: null, memoryMb: 3072, port: 25566, keepRunning: false, autostart: false, created: now() - 86400 * 4, running: false, startedAt: null, players: 0, maxPlayers: 10, address: '192.168.1.20:25566', icon: null },
+    info: { name: 'Survival vanilla', kind: 'vanilla', version: '1.21.4', build: null, memoryMb: 3072, port: 25566, keepRunning: false, autostart: false, created: now() - 86400 * 4, running: false, startedAt: null, players: 0, maxPlayers: 10, address: '192.168.1.20:25566', icon: null, publicAddress: null },
     props: { ...defaultProps(25566), maxPlayers: 10, motd: 'A Minecraft Server', onlineMode: true, whitelist: false },
     players: { online: [], ops: [], whitelist: [], banned: [] },
     console: [],
@@ -322,6 +322,9 @@ function simulateServerCreate(name: string) {
   });
 }
 
+/** playit.gg collegato (simulato). */
+let playitConnected = false;
+
 function serverCommands(): Record<string, (args: Record<string, any>) => unknown> {
   return {
     server_list: () => servers.map((s) => structuredClone(s.info)),
@@ -331,7 +334,7 @@ function serverCommands(): Record<string, (args: Record<string, any>) => unknown
       if (!input.eula) throw 'Per creare un server bisogna accettare l’EULA di Minecraft.';
       await simulateServerCreate(input.name);
       const s: MockServer = {
-        info: { name: input.name, kind: input.kind, version: input.version, build: input.kind === 'paper' ? 230 : null, memoryMb: input.memoryMb, port: input.port, keepRunning: input.keepRunning, autostart: input.autostart, created: now(), running: false, startedAt: null, players: 0, maxPlayers: 20, address: `192.168.1.20:${input.port}`, icon: null },
+        info: { name: input.name, kind: input.kind, version: input.version, build: input.kind === 'paper' ? 230 : null, memoryMb: input.memoryMb, port: input.port, keepRunning: input.keepRunning, autostart: input.autostart, created: now(), running: false, startedAt: null, players: 0, maxPlayers: 20, address: `192.168.1.20:${input.port}`, icon: null, publicAddress: null },
         props: { ...defaultProps(input.port), motd: 'A Minecraft Server' },
         players: { online: [], ops: [], whitelist: [], banned: [] },
         console: [],
@@ -372,6 +375,35 @@ function serverCommands(): Record<string, (args: Record<string, any>) => unknown
     server_set_icon: ({ name, png }) => {
       const s = findServer(name);
       s.info.icon = png;
+      return structuredClone(s.info);
+    },
+    // playit.gg: l'approvazione "arriva" dopo qualche secondo.
+    playit_status: () => ({ connected: playitConnected }),
+    playit_connect: async () => {
+      emit('playit-claim', 'WaitingForUserVisit');
+      await new Promise((r) => setTimeout(r, 1500));
+      emit('playit-claim', 'WaitingForUser');
+      await new Promise((r) => setTimeout(r, 1500));
+      emit('playit-claim', 'UserAccepted');
+      playitConnected = true;
+    },
+    playit_disconnect: () => {
+      playitConnected = false;
+      for (const s of servers) s.info.publicAddress = null;
+    },
+    server_playit_enable: async ({ name }) => {
+      const s = findServer(name);
+      if (!playitConnected) throw 'playit.gg non collegato';
+      for (const stage of ['agent', 'tunnel', 'address']) {
+        emit('playit-progress', { name, stage });
+        await new Promise((r) => setTimeout(r, 900));
+      }
+      s.info.publicAddress = 'gentle-sound.tun.ply.gg';
+      return structuredClone(s.info);
+    },
+    server_playit_disable: ({ name }) => {
+      const s = findServer(name);
+      s.info.publicAddress = null;
       return structuredClone(s.info);
     },
     server_players: ({ name }) => structuredClone(findServer(name).players),

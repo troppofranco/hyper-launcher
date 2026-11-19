@@ -14,6 +14,7 @@
   import FileBrowser from '../components/server/FileBrowser.svelte';
   import Plugins from '../components/server/Plugins.svelte';
   import DeleteServerDialog from '../components/server/DeleteServerDialog.svelte';
+  import PlayitDialog from '../components/server/PlayitDialog.svelte';
   import { copyText, kindLabel, poll, uptime } from '../components/server/util';
   import { pickFile, squarePng } from '../lib/image';
 
@@ -23,6 +24,7 @@
   let missing = $state(false);
   let busy = $state<'start' | 'stop' | 'restart' | null>(null);
   let deleteOpen = $state(false);
+  let playitOpen = $state(false);
 
   let failed = false;
 
@@ -121,11 +123,14 @@
         </div>
         <div class="sub">
           <span class="kind">{kindLabel(server)}</span>
-          <span>{t('Indirizzo:')} <span class="addr">{server.address}</span></span>
+          <span>{t('Casa:')} <span class="addr">{server.address}</span></span>
+          {#if server.publicAddress}<span>{t('Internet:')} <span class="addr">{server.publicAddress}</span></span>{/if}
         </div>
       </div>
       <div class="actions">
-        <button class="btn" title={server.address} onclick={() => copyText(server!.address)}><Icon name="copy" size={16} /> {t('Copia IP')}</button>
+        <button class="btn" class:online={!!server.publicAddress} title={t('Gioca con amici fuori casa')} onclick={() => (playitOpen = true)}><Icon name="globe" size={16} /> {server.publicAddress ? t('Internet') : t('Amici fuori casa')}</button>
+        <!-- Con l'accesso da internet attivo si copia l'indirizzo pubblico. -->
+        <button class="btn" title={server.publicAddress ?? server.address} onclick={() => copyText(server!.publicAddress ?? server!.address)}><Icon name="copy" size={16} /> {t('Copia IP')}</button>
         {#if running}
           <button class="btn" disabled={!!busy} onclick={() => act('restart')}><Icon name="refresh" size={16} /> {busy === 'restart' ? t('Riavvio…') : t('Riavvia')}</button>
           <button class="btn danger" disabled={!!busy} onclick={() => act('stop')}>{busy === 'stop' ? t('Spegnimento…') : t('Ferma')}</button>
@@ -161,6 +166,10 @@
   {/if}
 </div>
 
+{#if playitOpen && server}
+  <PlayitDialog {server} onclose={() => (playitOpen = false)} onchanged={(s) => (server = s)} />
+{/if}
+
 {#if deleteOpen}
   <DeleteServerDialog {name} onclose={() => (deleteOpen = false)} ondeleted={() => app.go({ view: 'servers' })} />
 {/if}
@@ -190,6 +199,7 @@
 
   .actions { display: flex; gap: 10px; flex-wrap: wrap; }
   .icon-only { width: 44px; padding: 0; }
+  .online { color: var(--success-text); border-color: color-mix(in srgb, var(--success) 45%, transparent); }
   .icon-only:hover:not(:disabled) { color: var(--danger-text); border-color: color-mix(in srgb, var(--danger) 60%, transparent); }
   .tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--line); overflow-x: auto; }
   .tabs button { height: 44px; padding: 0 16px; background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--muted); font-weight: 600; white-space: nowrap; transition: color .2s, border-color .2s; }

@@ -45,6 +45,12 @@ pub struct ServerConfig {
     pub created: u64,
     /// Componente del runtime Java Mojang da usare.
     pub java_component: String,
+    /// Tunnel playit.gg creato dal launcher (accesso da internet).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub playit_tunnel: Option<uuid::Uuid>,
+    /// Indirizzo pubblico del tunnel (es. `nome.tun.ply.gg`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub playit_address: Option<String>,
 }
 
 /// Memoria ammessa per un server, in MB.
@@ -239,6 +245,8 @@ mod tests {
             autostart: false,
             created: 1,
             java_component: "java-runtime-delta".into(),
+            playit_tunnel: None,
+            playit_address: None,
         }
     }
 
