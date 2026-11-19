@@ -2,6 +2,7 @@
 // della app vera, con dati di esempio in memoria. Non entra nella app Tauri
 // se non come codice inutilizzato.
 
+import type { Route } from './store.svelte';
 import type { Account, InstalledContent, Instance, SearchHit, ServerInfo, ServerPlayers, ServerPlugin, ServerProperties, Settings, StatsPoint } from './api';
 
 type Handler = (payload: unknown) => void;
@@ -421,7 +422,11 @@ function serverCommands(): Record<string, (args: Record<string, any>) => unknown
 }
 
 const commands: Record<string, (args: Record<string, any>) => unknown> = {
-  app_info: () => ({ version: '0.1.0-dev', dev: true, dataDir: 'C:\\Users\\utente\\AppData\\Roaming\\HyperLauncher', curseforge: true, windowEffect: false }),
+  // Negli screenshot delle release (`?version=0.1.22`) si vede la versione vera.
+  app_info: () => {
+    const version = typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('version');
+    return { version: version ?? '0.1.0-dev', dev: !version, dataDir: 'C:\\Users\\utente\\AppData\\Roaming\\HyperLauncher', curseforge: true, windowEffect: false };
+  },
   list_instances: () => structuredClone(state.instances),
   create_instance: ({ input }) => {
     const loader = input.loader === 'fabric' ? { kind: 'fabric' as const, name: 'Fabric', version: '0.20.1' } : null;
@@ -592,3 +597,29 @@ export const mock = {
     return () => handlers.get(event)?.delete(handler);
   },
 };
+
+// ---------- Modalità demo ----------
+// `?demo=<pagina>` apre direttamente una pagina con i dati di esempio, a
+// onboarding già fatto: la usa lo script che fa gli screenshot delle
+// release (`ui/scripts/screenshots.mjs`). Pagine: home, library, instance,
+// explore, servers, server, server-players, server-plugins, server-files,
+// server-settings, customize, settings, onboarding.
+
+const demo = typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('demo');
+if (demo && demo !== 'onboarding') state.settings.setupDone = true;
+
+/** Pagina iniziale della modalità demo, se richiesta. */
+export function demoRoute(): Route | null {
+  if (!demo || demo === 'onboarding') return null;
+  const [view, tab] = demo.split('-') as [string, string | undefined];
+  switch (view) {
+    case 'instance':
+      return { view: 'instance', name: state.instances[0].name };
+    case 'server':
+      return { view: 'server', name: 'Server degli amici', tab };
+    case 'home': case 'library': case 'explore': case 'servers': case 'customize': case 'settings':
+      return { view };
+    default:
+      return null;
+  }
+}

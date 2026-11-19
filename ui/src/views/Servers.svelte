@@ -67,7 +67,7 @@
             <InstanceIcon name={s.name} icon={s.icon} size={48} />
             <span class="meta">
               <span class="name">{s.name}</span>
-              <span class="sub">{kindLabel({ ...s, build: null })} · {gb(s.memoryMb)}{#if s.keepRunning} · {t('resta acceso')}{/if}</span>
+              <span class="sub">{kindLabel({ ...s, build: null })} · {gb(s.memoryMb)}{s.keepRunning ? ` · ${t('resta acceso')}` : ''}</span>
             </span>
             <span class="pill" class:on={s.running}>{s.running ? t('Acceso') : t('Spento')}</span>
           </div>

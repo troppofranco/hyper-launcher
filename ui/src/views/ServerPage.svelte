@@ -1,6 +1,7 @@
 <script lang="ts">
   // Pagina di un server ospitato: console, statistiche, giocatori,
   // impostazioni e file. Lo stato del server si rilegge ogni 3 secondi.
+  import { untrack } from 'svelte';
   import { api, type ServerInfo } from '../lib/api';
   import { app } from '../lib/store.svelte';
   import { t } from '../lib/i18n.svelte';
@@ -16,7 +17,7 @@
   import { copyText, kindLabel, poll, uptime } from '../components/server/util';
   import { pickFile, squarePng } from '../lib/image';
 
-  let { name }: { name: string } = $props();
+  let { name, initialTab }: { name: string; initialTab?: string } = $props();
 
   let server = $state<ServerInfo | null>(null);
   let missing = $state(false);
@@ -81,7 +82,9 @@
 
   // Sezioni della pagina, come le schede di un'istanza.
   type Tab = 'console' | 'players' | 'plugins' | 'files' | 'settings';
-  let tab = $state<Tab>('console');
+  const TABS: Tab[] = ['console', 'players', 'plugins', 'files', 'settings'];
+  // La scheda iniziale arriva solo dalla modalità demo (screenshot delle release).
+  let tab = $state<Tab>(untrack(() => (TABS.includes(initialTab as Tab) ? (initialTab as Tab) : 'console')));
   const tabs = $derived<[Tab, string][]>([
     ['console', t('Console')],
     ['players', running && server?.players ? t('Giocatori · {n}', { n: server.players }) : t('Giocatori')],

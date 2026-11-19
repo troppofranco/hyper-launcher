@@ -2,6 +2,7 @@
 
 import { api, on, type Account, type AppInfo, type BlockedFile, type PackImport, type ContentKind, type Instance, type News, type SearchHit, type SearchSort, type Settings, type UpdateInfo, type Versions } from './api';
 import { setLang, t } from './i18n.svelte';
+import { demoRoute } from './mock';
 import { applyAppearance } from './look';
 
 export type Route =
@@ -11,7 +12,7 @@ export type Route =
   | { view: 'explore' }
   | { view: 'project'; id: string; kind: ContentKind }
   | { view: 'servers' }
-  | { view: 'server'; name: string }
+  | { view: 'server'; name: string; tab?: string }
   | { view: 'customize' }
   | { view: 'settings' };
 
@@ -47,7 +48,7 @@ const TRIM_TO = 2000;
 const NO_PROGRESS = { stage: '', done: 0, total: 0, downloadedBytes: 0 };
 
 class AppStore {
-  route = $state<Route>({ view: 'home' });
+  route = $state<Route>(demoRoute() ?? { view: 'home' });
   instances = $state<Instance[]>([]);
   accounts = $state<Account[]>([]);
   settings = $state<Settings | null>(null);

@@ -74,7 +74,7 @@
             {:else if app.route.view === 'servers'}
               <Servers />
             {:else if app.route.view === 'server'}
-              <ServerPage name={app.route.name} />
+              <ServerPage name={app.route.name} initialTab={app.route.tab} />
             {:else if app.route.view === 'customize'}
               <Customize />
             {:else}
