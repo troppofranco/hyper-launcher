@@ -10,6 +10,8 @@ export type Route =
   | { view: 'instance'; name: string }
   | { view: 'explore' }
   | { view: 'project'; id: string; kind: ContentKind }
+  | { view: 'servers' }
+  | { view: 'server'; name: string }
   | { view: 'customize' }
   | { view: 'settings' };
 

@@ -96,6 +96,9 @@ var
 begin
   if CurUninstallStep <> usPostUninstall then
     exit;
+  { Voce che avvia i server con il computer. }
+  RegDeleteValue(HKEY_CURRENT_USER, 'Software\Microsoft\Windows\CurrentVersion\Run',
+    'HyperLauncherServers');
   if not RegQueryStringValue(HKEY_CURRENT_USER, 'Environment', 'Path', Paths) then
     exit;
   Dir := ExpandConstant('{app}');

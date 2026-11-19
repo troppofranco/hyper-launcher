@@ -2,7 +2,7 @@
 // della app vera, con dati di esempio in memoria. Non entra nella app Tauri
 // se non come codice inutilizzato.
 
-import type { Account, InstalledContent, Instance, SearchHit, Settings } from './api';
+import type { Account, InstalledContent, Instance, SearchHit, ServerInfo, ServerPlayers, ServerProperties, Settings, StatsPoint } from './api';
 
 type Handler = (payload: unknown) => void;
 const handlers = new Map<string, Set<Handler>>();
@@ -88,6 +88,294 @@ function simulateLaunch(name: string) {
       }, 4000);
     }
   }, 150);
+}
+
+// ---------- Server ospitati ----------
+// Due server come nel mockup, uno acceso: la console cresce da sola, le
+// statistiche si campionano ogni 2 s e i comandi dei giocatori cambiano
+// gli elenchi.
+
+interface MockServer {
+  info: ServerInfo;
+  props: ServerProperties;
+  players: ServerPlayers;
+  console: string[];
+  points: StatsPoint[];
+  files: Record<string, string | null>;
+}
+
+const clock = () => new Date().toTimeString().slice(0, 8);
+const uuid = () => crypto.randomUUID();
+const CHATTER = [
+  (s: MockServer) => `[${clock()} INFO]: There are ${s.players.online.length} of a max of ${s.props.maxPlayers} players online: ${s.players.online.join(', ')}`,
+  () => `[${clock()} INFO]: [Server] §aBackup completato§r in §l2.1s`,
+  () => `[${clock()} INFO]: <Marco> ciao a tutti!`,
+  () => `[${clock()} WARN]: Can't keep up! Is the server overloaded? Running 2140ms behind, skipping 42 tick(s)`,
+  () => `[${clock()} INFO]: <Giulia> qualcuno ha visto il villaggio a nord?`,
+  () => `[${clock()} INFO]: Saving the game (this may take a moment!)`,
+  () => `[${clock()} INFO]: Saved the game`,
+  () => `[${clock()} ERROR]: Could not pass event PlayerMoveEvent to EssentialsX v2.21.0`,
+];
+
+function defaultProps(port: number): ServerProperties {
+  return { maxPlayers: 20, onlineMode: false, motd: 'Benvenuti nel server degli amici!', difficulty: 'normal', gamemode: 'survival', pvp: true, whitelist: true, viewDistance: 10, simulationDistance: 10, hardcore: false, allowFlight: false, spawnProtection: 16, seed: '', port };
+}
+
+function serverFiles(kind: 'vanilla' | 'paper'): Record<string, string | null> {
+  const files: Record<string, string | null> = {
+    'server.properties': '#Minecraft server properties\nmotd=Benvenuti nel server degli amici!\nmax-players=20\nonline-mode=false\ndifficulty=normal\npvp=true\nwhite-list=true\nview-distance=10\n',
+    'eula.txt': '#By changing the setting below to TRUE you are indicating your agreement to our EULA (https://aka.ms/MinecraftEULA).\neula=true\n',
+    'ops.json': '[\n  {\n    "uuid": "8667ba71-b85a-4004-af54-457a9734eed7",\n    "name": "Marco",\n    "level": 4\n  }\n]\n',
+    'banned-players.json': '[]\n',
+    'server.jar': null,
+    'logs/latest.log': '[21:14:02 INFO]: Starting minecraft server version 1.21.4\n[21:14:03 INFO]: Done (8.412s)! For help, type "help"\n',
+    'world/level.dat': null,
+    'world/region/r.0.0.mca': null,
+  };
+  if (kind === 'paper') {
+    files['plugins/EssentialsX.jar'] = null;
+    files['plugins/EssentialsX/config.yml'] = '# Messaggio di benvenuto\nnewbies:\n  announce-format: \'&dBenvenuto {DISPLAYNAME}!\'\n  kit: tools\nteleport-cooldown: 5\n';
+    files['plugins/EssentialsX/kits.yml'] = 'kits:\n  tools:\n    delay: 10\n    items:\n      - stone_pickaxe 1\n      - stone_axe 1\n';
+    files['bukkit.yml'] = 'settings:\n  allow-end: true\n  warn-on-overload: true\n';
+  }
+  return files;
+}
+
+function statsPoint(s: MockServer, t: number): StatsPoint {
+  const prev = s.points.at(-1);
+  const wobble = (v: number, d: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v + (Math.random() - 0.5) * d));
+  return {
+    t,
+    cpu: Math.round(wobble(prev?.cpu ?? 30, 14, 4, 95)),
+    memMb: Math.round(wobble(prev?.memMb ?? 2200, 120, 900, s.info.memoryMb - 200)),
+    players: s.players.online.length,
+    latencyMs: s.players.online.length ? Math.round(wobble(prev?.latencyMs ?? 4, 4, 1, 40)) : null,
+  };
+}
+
+const servers: MockServer[] = [
+  {
+    info: { name: 'Server degli amici', kind: 'paper', version: '1.21.4', build: 232, memoryMb: 4096, port: 25565, keepRunning: true, autostart: false, created: now() - 86400 * 20, running: true, startedAt: now() - 8040, players: 2, maxPlayers: 20, address: '192.168.1.20:25565' },
+    props: defaultProps(25565),
+    players: {
+      online: ['Marco', 'Giulia'],
+      ops: [{ name: 'Marco', uuid: '8667ba71-b85a-4004-af54-457a9734eed7' }],
+      whitelist: [{ name: 'Marco', uuid: '8667ba71-b85a-4004-af54-457a9734eed7' }, { name: 'Giulia', uuid: '5a1e3f2c-8f0b-4b5e-9c1d-2a7e8b9c0d1e' }, { name: 'Luca', uuid: '1b2c3d4e-5f60-4a7b-8c9d-0e1f2a3b4c5d' }],
+      banned: [{ name: 'Griefer99', uuid: '9f8e7d6c-5b4a-4392-8170-6f5e4d3c2b1a', reason: 'Ha distrutto la base di Giulia' }],
+    },
+    console: [
+      '[21:14:01 INFO]: Starting minecraft server version 1.21.4',
+      '[21:14:01 INFO]: Loading properties',
+      '[21:14:02 INFO]: §6[EssentialsX]§r Enabling EssentialsX v2.21.0',
+      '[21:14:02 INFO]: Preparing spawn area: 100%',
+      '[21:14:03 INFO]: Done (8.412s)! For help, type "help"',
+      '[21:20:41 INFO]: Marco joined the game',
+      '[21:22:10 INFO]: <Marco> ciao a tutti!',
+      '[21:25:57 INFO]: Giulia joined the game',
+      '[21:31:18 WARN]: Can\'t keep up! Is the server overloaded? Running 2140ms behind, skipping 42 tick(s)',
+    ],
+    points: [],
+    files: serverFiles('paper'),
+  },
+  {
+    info: { name: 'Survival vanilla', kind: 'vanilla', version: '1.21.4', build: null, memoryMb: 3072, port: 25566, keepRunning: false, autostart: false, created: now() - 86400 * 4, running: false, startedAt: null, players: 0, maxPlayers: 10, address: '192.168.1.20:25566' },
+    props: { ...defaultProps(25566), maxPlayers: 10, motd: 'A Minecraft Server', onlineMode: true, whitelist: false },
+    players: { online: [], ops: [], whitelist: [], banned: [] },
+    console: [],
+    points: [],
+    files: serverFiles('vanilla'),
+  },
+];
+// Cinque minuti di storia per il server acceso.
+{
+  const s = servers[0];
+  const t0 = now() - 300;
+  for (let i = 0; i < 150; i++) s.points.push(statsPoint(s, t0 + i * 2));
+}
+
+function findServer(name: string): MockServer {
+  const s = servers.find((x) => x.info.name === name);
+  if (!s) throw `Server “${name}” non trovato.`;
+  return s;
+}
+
+function say(s: MockServer, line: string) {
+  s.console.push(line);
+}
+
+// Il mondo va avanti: righe nuove e campioni ogni 2 s per i server accesi.
+setInterval(() => {
+  for (const s of servers) {
+    if (!s.info.running) continue;
+    s.points.push(statsPoint(s, now()));
+    if (s.points.length > 150) s.points.shift();
+    if (Math.random() < 0.45) say(s, CHATTER[Math.floor(Math.random() * CHATTER.length)](s));
+    s.info.players = s.players.online.length;
+    s.info.maxPlayers = s.props.maxPlayers;
+  }
+}, 2000);
+
+function startServer(s: MockServer) {
+  s.info.running = true;
+  s.info.startedAt = now();
+  s.points = [];
+  [
+    `Starting minecraft server version ${s.info.version}`,
+    'Loading properties',
+    `Starting Minecraft server on *:${s.info.port}`,
+    'Preparing level "world"',
+    'Preparing spawn area: 100%',
+    'Done (6.204s)! For help, type "help"',
+  ].forEach((l, i) => setTimeout(() => say(s, `[${clock()} INFO]: ${l}`), 250 * i));
+}
+
+function stopServer(s: MockServer) {
+  say(s, `[${clock()} INFO]: Stopping the server`);
+  say(s, `[${clock()} INFO]: Saving worlds`);
+  s.info.running = false;
+  s.info.startedAt = null;
+  s.players.online = [];
+  s.info.players = 0;
+}
+
+function entry(name: string) {
+  return { name, uuid: uuid() };
+}
+
+/** Esegue un comando della console sui dati finti, come farebbe il server. */
+function runCommand(s: MockServer, line: string) {
+  if (!s.info.running) throw 'Il server è spento.';
+  const [cmd, ...rest] = line.trim().split(/\s+/);
+  const arg = rest.join(' ');
+  const p = s.players;
+  const out = (text: string) => say(s, `[${clock()} INFO]: ${text}`);
+  switch (cmd) {
+    case 'op': if (!p.ops.some((o) => o.name === arg)) p.ops.push(entry(arg)); out(`Made ${arg} a server operator`); break;
+    case 'deop': p.ops = p.ops.filter((o) => o.name !== arg); out(`Made ${arg} no longer a server operator`); break;
+    case 'kick': p.online = p.online.filter((n) => n !== arg); out(`Kicked ${arg}: Kicked by an operator`); break;
+    case 'ban':
+      p.online = p.online.filter((n) => n !== rest[0]);
+      if (!p.banned.some((b) => b.name === rest[0])) p.banned.push({ ...entry(rest[0]), reason: rest.slice(1).join(' ') || 'Banned by an operator.' });
+      out(`Banned ${rest[0]}: Banned by an operator.`);
+      break;
+    case 'pardon': p.banned = p.banned.filter((b) => b.name !== arg); out(`Unbanned ${arg}`); break;
+    case 'whitelist':
+      if (rest[0] === 'add' && rest[1]) { if (!p.whitelist.some((w) => w.name === rest[1])) p.whitelist.push(entry(rest[1])); out(`Added ${rest[1]} to the whitelist`); }
+      else if (rest[0] === 'remove' && rest[1]) { p.whitelist = p.whitelist.filter((w) => w.name !== rest[1]); out(`Removed ${rest[1]} from the whitelist`); }
+      else out('§cUnknown or incomplete command, see below for error');
+      break;
+    case 'say': out(`[Server] ${arg}`); break;
+    case 'list': out(`There are ${p.online.length} of a max of ${s.props.maxPlayers} players online: ${p.online.join(', ')}`); break;
+    case 'stop': stopServer(s); break;
+    default: say(s, `[${clock()} WARN]: §cUnknown or incomplete command, see below for error`);
+  }
+}
+
+function listDir(s: MockServer, path: string) {
+  const prefix = path ? `${path}/` : '';
+  const out = new Map<string, { name: string; dir: boolean; size: number; modified: number }>();
+  for (const [file, content] of Object.entries(s.files)) {
+    if (!file.startsWith(prefix)) continue;
+    const rest = file.slice(prefix.length);
+    const [head, ...tail] = rest.split('/');
+    if (tail.length) {
+      const d = out.get(head) ?? { name: head, dir: true, size: 0, modified: now() - 3600 };
+      out.set(head, d);
+    } else {
+      out.set(head, { name: head, dir: false, size: content === null ? 48_000_000 : new Blob([content]).size, modified: now() - 7200 });
+    }
+  }
+  if (path && !out.size) throw 'Cartella non trovata.';
+  return [...out.values()];
+}
+
+function simulateServerCreate(name: string) {
+  const stages: ['download' | 'java' | 'setup', number][] = [['download', 12], ['java', 8], ['setup', 3]];
+  return new Promise<void>((resolve) => {
+    let i = 0;
+    let done = 0;
+    const timer = setInterval(() => {
+      const [stage, total] = stages[i];
+      done += 1;
+      emit('server-progress', { name, stage, done, total });
+      if (done >= total) {
+        i += 1;
+        done = 0;
+        if (i >= stages.length) { clearInterval(timer); resolve(); }
+      }
+    }, 140);
+  });
+}
+
+function serverCommands(): Record<string, (args: Record<string, any>) => unknown> {
+  return {
+    server_list: () => servers.map((s) => structuredClone(s.info)),
+    server_versions: ({ kind }) => (kind === 'paper' ? ['1.21.4', '1.21.3', '1.21.1', '1.20.6', '1.20.4'] : ['1.21.4', '1.21.3', '1.21.2', '1.21.1', '1.21', '1.20.6', '1.20.4']),
+    server_create: async ({ input }) => {
+      if (servers.some((s) => s.info.name === input.name)) throw 'Esiste già un server con questo nome.';
+      if (!input.eula) throw 'Per creare un server bisogna accettare l’EULA di Minecraft.';
+      await simulateServerCreate(input.name);
+      const s: MockServer = {
+        info: { name: input.name, kind: input.kind, version: input.version, build: input.kind === 'paper' ? 230 : null, memoryMb: input.memoryMb, port: input.port, keepRunning: input.keepRunning, autostart: input.autostart, created: now(), running: false, startedAt: null, players: 0, maxPlayers: 20, address: `192.168.1.20:${input.port}` },
+        props: { ...defaultProps(input.port), motd: 'A Minecraft Server' },
+        players: { online: [], ops: [], whitelist: [], banned: [] },
+        console: [],
+        points: [],
+        files: serverFiles(input.kind),
+      };
+      servers.push(s);
+      return structuredClone(s.info);
+    },
+    server_delete: ({ name }) => {
+      const s = findServer(name);
+      if (s.info.running) throw 'Ferma il server prima di eliminarlo.';
+      servers.splice(servers.indexOf(s), 1);
+    },
+    server_start: ({ name }) => startServer(findServer(name)),
+    server_stop: ({ name }) => stopServer(findServer(name)),
+    server_restart: async ({ name }) => {
+      const s = findServer(name);
+      stopServer(s);
+      await new Promise((r) => setTimeout(r, 800));
+      startServer(s);
+    },
+    server_command: ({ name, line }) => runCommand(findServer(name), line),
+    server_console: ({ name, since }) => {
+      const s = findServer(name);
+      return { lines: s.console.slice(since), next: s.console.length };
+    },
+    server_stats: ({ name }) => {
+      const s = findServer(name);
+      return { points: structuredClone(s.points), memMaxMb: s.info.memoryMb, online: [...s.players.online] };
+    },
+    server_update: ({ name, update }) => {
+      const s = findServer(name);
+      Object.assign(s.info, update);
+      return structuredClone(s.info);
+    },
+    server_players: ({ name }) => structuredClone(findServer(name).players),
+    server_properties: ({ name }) => structuredClone(findServer(name).props),
+    server_save_properties: ({ name, properties }) => {
+      const s = findServer(name);
+      s.props = structuredClone(properties);
+      s.info.port = properties.port;
+      s.info.address = `192.168.1.20:${properties.port}`;
+    },
+    server_files: ({ name, path }) => listDir(findServer(name), path),
+    server_read_file: ({ name, path }) => {
+      const content = findServer(name).files[path];
+      if (content === undefined) throw 'File non trovato.';
+      if (content === null) throw 'Il file è binario o troppo grande per l’editor.';
+      return content;
+    },
+    server_write_file: ({ name, path, content }) => {
+      findServer(name).files[path] = content;
+    },
+    server_delete_file: ({ name, path }) => {
+      const s = findServer(name);
+      for (const f of Object.keys(s.files)) if (f === path || f.startsWith(`${path}/`)) delete s.files[f];
+    },
+  };
 }
 
 const commands: Record<string, (args: Record<string, any>) => unknown> = {
@@ -246,6 +534,7 @@ const commands: Record<string, (args: Record<string, any>) => unknown> = {
   check_update: () => (location.search.includes('update') ? { current: '0.1.11', available: '0.1.12', url: 'https://github.com/troppofranco/hyper-launcher/releases/tag/build-12' } : { current: null, available: null, url: null }),
   install_update: () => new Promise(() => {}),
   launch_instance: ({ name }) => { simulateLaunch(name); },
+  ...serverCommands(),
 };
 
 export const mock = {

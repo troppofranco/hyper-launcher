@@ -18,6 +18,7 @@
     { id: 'home', icon: 'home', label: t('Home'), active: view === 'home', go: () => app.go({ view: 'home' }) },
     { id: 'library', icon: 'library', label: t('Libreria'), active: view === 'library', go: () => app.go({ view: 'library' }) },
     { id: 'explore', icon: 'compass', label: t('Esplora'), active: view === 'explore' || view === 'project', go: () => app.go({ view: 'explore' }) },
+    { id: 'servers', icon: 'server', label: t('Server'), active: view === 'servers' || view === 'server', go: () => app.go({ view: 'servers' }) },
     { id: 'customize', icon: 'shirt', label: t('Personalizzazione'), active: view === 'customize', go: () => app.go({ view: 'customize' }) },
     { id: 'new', icon: 'plus', label: t('Nuova istanza'), active: false, go: () => (app.newInstanceOpen = true) },
   ]);

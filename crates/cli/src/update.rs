@@ -18,6 +18,14 @@ pub async fn run(app: &App) -> Result<Option<u64>> {
     if current_build().is_none() {
         return Ok(None);
     }
+    // Il setup chiuderebbe di forza l'host: con server accesi si rimanda.
+    if !hyper_server::HostClient::new(&app.paths)
+        .status()
+        .await
+        .is_empty()
+    {
+        return Ok(None);
+    }
     let downloader = Downloader::new(app.config.download_concurrency)?;
     Ok(self_update::update_to_latest(&downloader, &app.paths.updates_dir(), false).await?)
 }

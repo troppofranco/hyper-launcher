@@ -15,6 +15,8 @@
   import Explore from './views/Explore.svelte';
   import ProjectPage from './views/ProjectPage.svelte';
   import Customize from './views/Customize.svelte';
+  import Servers from './views/Servers.svelte';
+  import ServerPage from './views/ServerPage.svelte';
   import Onboarding from './components/Onboarding.svelte';
   import Backdrop from './components/Backdrop.svelte';
   import { t } from './lib/i18n.svelte';
@@ -25,7 +27,7 @@
   let ready = $state(false);
   const look = $derived(app.settings?.appearance);
   const routeKey = $derived(
-    app.route.view === 'instance' ? `instance:${app.route.name}` : app.route.view === 'project' ? `project:${app.route.id}` : app.route.view,
+    app.route.view === 'instance' ? `instance:${app.route.name}` : app.route.view === 'project' ? `project:${app.route.id}` : app.route.view === 'server' ? `server:${app.route.name}` : app.route.view,
   );
   let failed = $state<string | null>(null);
 
@@ -69,6 +71,10 @@
               <Explore />
             {:else if app.route.view === 'project'}
               <ProjectPage id={app.route.id} kind={app.route.kind} />
+            {:else if app.route.view === 'servers'}
+              <Servers />
+            {:else if app.route.view === 'server'}
+              <ServerPage name={app.route.name} />
             {:else if app.route.view === 'customize'}
               <Customize />
             {:else}

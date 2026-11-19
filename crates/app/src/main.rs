@@ -9,6 +9,7 @@ mod commands;
 mod content;
 mod custom;
 mod launch;
+mod servers;
 mod state;
 mod views;
 
@@ -16,6 +17,18 @@ use state::AppState;
 use tauri::Manager;
 
 fn main() {
+    // Modalità host dei server (avviata dal launcher o all'accesso a Windows):
+    // nessuna finestra, solo i server in background.
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == servers::HOST_ARG) {
+        let autostart = args.iter().any(|a| a == "--autostart");
+        if let Err(e) = servers::run_host(autostart) {
+            eprintln!("server host: {e:#}");
+            std::process::exit(1);
+        }
+        return;
+    }
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
@@ -91,10 +104,36 @@ fn main() {
             commands::check_update,
             commands::install_update,
             launch::launch_instance,
+            servers::server_list,
+            servers::server_versions,
+            servers::server_create,
+            servers::server_delete,
+            servers::server_start,
+            servers::server_stop,
+            servers::server_restart,
+            servers::server_command,
+            servers::server_console,
+            servers::server_stats,
+            servers::server_update,
+            servers::server_players,
+            servers::server_properties,
+            servers::server_save_properties,
+            servers::server_files,
+            servers::server_read_file,
+            servers::server_write_file,
+            servers::server_delete_file,
         ])
-        .run(tauri::generate_context!());
-    if let Err(e) = result {
-        tracing::error!("cannot start the window: {e}");
-        std::process::exit(1);
+        .build(tauri::generate_context!());
+    match result {
+        Ok(app) => app.run(|handle, event| {
+            // Chiudendo il launcher si fermano i server senza "resta acceso".
+            if let tauri::RunEvent::Exit = event {
+                servers::on_exit(&handle.state::<AppState>());
+            }
+        }),
+        Err(e) => {
+            tracing::error!("cannot start the window: {e}");
+            std::process::exit(1);
+        }
     }
 }

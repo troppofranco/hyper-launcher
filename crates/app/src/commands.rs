@@ -523,6 +523,14 @@ pub async fn install_update(app: AppHandle, state: State<'_, AppState>) -> CmdRe
             "Chiudi il gioco (o attendi la fine dell'installazione) prima di aggiornare.".into(),
         );
     }
+    // Il setup chiuderebbe di forza l'host dei server, senza salvare i mondi.
+    if !hyper_server::HostClient::new(&state.paths)
+        .status()
+        .await
+        .is_empty()
+    {
+        return Err("Ferma i server accesi prima di aggiornare.".into());
+    }
     if self_update::current_build().is_none() {
         return Err("Questa è una versione di sviluppo: niente aggiornamenti.".into());
     }

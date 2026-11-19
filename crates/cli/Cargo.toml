@@ -18,6 +18,7 @@ hyper-content.workspace = true
 hyper-core.workspace = true
 hyper-installer.workspace = true
 hyper-instances.workspace = true
+hyper-server.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

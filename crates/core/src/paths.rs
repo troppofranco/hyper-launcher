@@ -143,6 +143,21 @@ impl Paths {
     pub fn instance_dir(&self, name: &str) -> Result<PathBuf, CoreError> {
         Ok(self.instances_dir().join(safe_component(name)?))
     }
+
+    /// Server Minecraft ospitati: una cartella per server (i suoi file) e
+    /// accanto `<nome>.server.toml` con la configurazione del launcher.
+    pub fn servers_dir(&self) -> PathBuf {
+        self.root.join("servers")
+    }
+
+    pub fn server_dir(&self, name: &str) -> Result<PathBuf, CoreError> {
+        Ok(self.servers_dir().join(safe_component(name)?))
+    }
+
+    /// Porta e token del processo in background che gestisce i server.
+    pub fn server_host_file(&self) -> PathBuf {
+        self.root.join("server-host.json")
+    }
 }
 
 #[cfg(test)]

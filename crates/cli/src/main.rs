@@ -4,6 +4,7 @@
 
 mod content;
 mod progress;
+mod server;
 mod update;
 
 use std::path::PathBuf;
@@ -74,6 +75,9 @@ enum Command {
     /// Modpack .mrpack: importa, installa da Modrinth, esporta.
     #[command(subcommand)]
     Pack(content::PackCommand),
+    /// Server Minecraft ospitati: crea, avvia, ferma, console.
+    #[command(subcommand)]
+    Server(server::ServerCommand),
     /// Aggiorna Hyper Launcher all'ultima versione pubblicata (avviene
     /// comunque da solo a ogni avvio; disattivabile con HYPER_NO_UPDATE=1).
     Update,
@@ -147,8 +151,8 @@ async fn main() -> Result<()> {
 
     // Aggiornamento automatico a ogni avvio. Un errore (rete assente, GitHub
     // irraggiungibile) non deve mai impedire di usare il launcher.
-    let auto_update =
-        !matches!(cli.command, Command::Update) && std::env::var_os(update::DISABLE_ENV).is_none();
+    let auto_update = !matches!(cli.command, Command::Update | Command::Server(_))
+        && std::env::var_os(update::DISABLE_ENV).is_none();
     if auto_update {
         match update::run(&app).await {
             Ok(Some(build)) => {
@@ -186,6 +190,7 @@ async fn main() -> Result<()> {
         Command::Instance(cmd) => instance(&app, cmd).await,
         Command::Content(cmd) => content::content(&app, cmd).await,
         Command::Pack(cmd) => content::pack(&app, cmd).await,
+        Command::Server(cmd) => server::server(&app, cmd).await,
         Command::Install { instance, java } => install(&app, &instance, java).await,
         Command::Launch {
             instance,

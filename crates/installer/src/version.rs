@@ -162,6 +162,9 @@ pub struct AssetIndexRef {
 #[derive(Debug, Clone, Deserialize)]
 pub struct VersionDownloads {
     pub client: Download,
+    /// Server dedicato (assente nelle versioni molto vecchie).
+    #[serde(default)]
+    pub server: Option<Download>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

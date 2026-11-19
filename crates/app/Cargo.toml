@@ -21,6 +21,7 @@ hyper-content.workspace = true
 hyper-core.workspace = true
 hyper-installer.workspace = true
 hyper-instances.workspace = true
+hyper-server.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tauri = { version = "2.12", features = [] }

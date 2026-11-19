@@ -121,6 +121,7 @@ interface Events {
   'instance-state': StateEvent;
   'msa-code': DeviceCodeEvent;
   'content-progress': ContentProgressEvent;
+  'server-progress': ServerProgressEvent;
 }
 
 export const inTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -190,7 +191,80 @@ export const api = {
   checkUpdate: () => call<UpdateInfo>('check_update'),
   installUpdate: () => call<void>('install_update'),
   launch: (name: string) => call<void>('launch_instance', { name }),
+
+  // ---------- Server ospitati ----------
+  serverList: () => call<ServerInfo[]>('server_list'),
+  /** Versioni disponibili per un tipo di server (dalla più recente). */
+  serverVersions: (kind: ServerKind) => call<string[]>('server_versions', { kind }),
+  /** Crea, scarica e prepara un server; avanzamento con l'evento `server-progress`. */
+  serverCreate: (input: NewServer) => call<ServerInfo>('server_create', { input }),
+  serverDelete: (name: string) => call<void>('server_delete', { name }),
+  serverStart: (name: string) => call<void>('server_start', { name }),
+  serverStop: (name: string) => call<void>('server_stop', { name }),
+  serverRestart: (name: string) => call<void>('server_restart', { name }),
+  /** Invia una riga alla console del server (es. `say ciao`, `op Marco`). */
+  serverCommand: (name: string, line: string) => call<void>('server_command', { name, line }),
+  /** Righe di console dalla numero `since` in poi. */
+  serverConsole: (name: string, since: number) => call<ConsoleChunk>('server_console', { name, since }),
+  serverStats: (name: string) => call<ServerStats>('server_stats', { name }),
+  serverUpdate: (name: string, update: ServerUpdate) => call<ServerInfo>('server_update', { name, update }),
+  serverPlayers: (name: string) => call<ServerPlayers>('server_players', { name }),
+  serverProperties: (name: string) => call<ServerProperties>('server_properties', { name }),
+  serverSaveProperties: (name: string, properties: ServerProperties) => call<void>('server_save_properties', { name, properties }),
+  /** File di una cartella del server (`''` = cartella principale). */
+  serverFiles: (name: string, path: string) => call<ServerFile[]>('server_files', { name, path }),
+  serverReadFile: (name: string, path: string) => call<string>('server_read_file', { name, path }),
+  serverWriteFile: (name: string, path: string, content: string) => call<void>('server_write_file', { name, path, content }),
+  serverDeleteFile: (name: string, path: string) => call<void>('server_delete_file', { name, path }),
 };
+
+export type ServerKind = 'vanilla' | 'paper';
+export interface ServerInfo {
+  name: string;
+  kind: ServerKind;
+  version: string;
+  /** Build di Paper (null per Vanilla). */
+  build: number | null;
+  memoryMb: number;
+  port: number;
+  keepRunning: boolean;
+  autostart: boolean;
+  created: number;
+  running: boolean;
+  /** Secondi Unix dell'avvio, se acceso. */
+  startedAt: number | null;
+  players: number;
+  maxPlayers: number;
+  /** Indirizzo nella rete di casa (es. 192.168.1.20:25565). */
+  address: string;
+}
+export interface NewServer { name: string; kind: ServerKind; version: string; memoryMb: number; port: number; keepRunning: boolean; autostart: boolean; eula: boolean }
+export interface ServerUpdate { memoryMb: number; keepRunning: boolean; autostart: boolean }
+export interface ConsoleChunk { lines: string[]; next: number }
+/** Un campione ogni 2 s (ultimi 5 minuti). */
+export interface StatsPoint { t: number; cpu: number; memMb: number; players: number; latencyMs: number | null }
+export interface ServerStats { points: StatsPoint[]; memMaxMb: number; online: string[] }
+export interface ServerFile { name: string; dir: boolean; size: number; modified: number }
+export interface PlayerEntry { name: string; uuid: string }
+export interface ServerPlayers { online: string[]; ops: PlayerEntry[]; whitelist: PlayerEntry[]; banned: (PlayerEntry & { reason: string })[] }
+export interface ServerProperties {
+  maxPlayers: number;
+  /** false = entrano anche gli account offline. */
+  onlineMode: boolean;
+  motd: string;
+  difficulty: 'peaceful' | 'easy' | 'normal' | 'hard';
+  gamemode: 'survival' | 'creative' | 'adventure' | 'spectator';
+  pvp: boolean;
+  whitelist: boolean;
+  viewDistance: number;
+  simulationDistance: number;
+  hardcore: boolean;
+  allowFlight: boolean;
+  spawnProtection: number;
+  seed: string;
+  port: number;
+}
+export interface ServerProgressEvent { name: string; stage: 'download' | 'java' | 'setup'; done: number; total: number }
 
 /** Comandi della finestra (barra del titolo personalizzata). */
 export async function windowAction(action: 'minimize' | 'maximize' | 'close') {

@@ -151,7 +151,7 @@ impl Installer {
     }
 
     /// Version JSON di Mojang, scaricata e verificata con lo SHA1 del manifest.
-    async fn vanilla_version(&self, entry: &ManifestVersion) -> Result<VersionJson> {
+    pub async fn vanilla_version(&self, entry: &ManifestVersion) -> Result<VersionJson> {
         let json_path = self
             .downloader
             .fetch(DownloadTask::new(
