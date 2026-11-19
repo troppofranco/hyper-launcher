@@ -64,6 +64,8 @@ pub struct ServerInfoView {
     pub players: u32,
     pub max_players: u32,
     pub address: String,
+    /// Immagine del server (`server-icon.png`) come `data:` URL.
+    pub icon: Option<String>,
 }
 
 /// Vista dei server: una sola richiesta all'host e un solo indirizzo di rete
@@ -103,6 +105,9 @@ fn view(
             .map_or(20, |p| p.common().max_players),
     };
     ServerInfoView {
+        icon: manager
+            .icon(&config.name)
+            .map(|png| crate::custom::data_url("image/png", &png)),
         address: format!("{ip}:{}", config.port),
         running: running.is_some(),
         started_at: running.map(|r| r.started),
@@ -295,6 +300,20 @@ pub async fn server_stats(state: State<'_, AppState>, name: String) -> CmdResult
         mem_max_mb: config.memory_mb,
         online: stats.online,
     })
+}
+
+/// Imposta (PNG 64×64 in base64, già ridimensionato dall'interfaccia) o
+/// toglie l'immagine del server: logo nel launcher e icona nel gioco.
+#[tauri::command]
+pub async fn server_set_icon(
+    state: State<'_, AppState>,
+    name: String,
+    png: Option<String>,
+) -> CmdResult<ServerInfoView> {
+    let manager = manager(&state);
+    let bytes = png.as_deref().map(crate::custom::decode).transpose()?;
+    manager.set_icon(&name, bytes.as_deref()).cmd()?;
+    info(&state, manager.load(&name).cmd()?).await
 }
 
 #[derive(Deserialize)]

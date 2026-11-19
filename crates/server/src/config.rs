@@ -53,6 +53,29 @@ pub const MEMORY_MB: std::ops::RangeInclusive<u32> = 512..=65536;
 pub const PORTS: std::ops::RangeInclusive<u16> = 1024..=65535;
 /// File del server Minecraft dentro la sua cartella.
 pub const JAR: &str = "server.jar";
+/// Immagine del server nella lista dei server di Minecraft.
+pub const ICON: &str = "server-icon.png";
+/// Lato dell'immagine richiesto da Minecraft.
+pub const ICON_SIDE: u32 = 64;
+const MAX_ICON_BYTES: u64 = 256 * 1024;
+
+/// Controlla che `bytes` sia un PNG 64×64 (intestazione e blocco IHDR).
+fn check_icon(bytes: &[u8]) -> Result<()> {
+    const SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
+    let bad = |msg: &str| Err(ServerError::Invalid(msg.into()));
+    if bytes.len() as u64 > MAX_ICON_BYTES {
+        return bad("the image is too large");
+    }
+    if bytes.len() < 24 || !bytes.starts_with(SIGNATURE) || &bytes[12..16] != b"IHDR" {
+        return bad("the server image must be a PNG");
+    }
+    let side =
+        |at: usize| u32::from_be_bytes([bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]]);
+    if side(16) != ICON_SIDE || side(20) != ICON_SIDE {
+        return bad("the server image must be 64×64 pixels");
+    }
+    Ok(())
+}
 
 impl ServerConfig {
     pub fn validate(&self) -> Result<()> {
@@ -160,6 +183,34 @@ impl ServerManager {
         list
     }
 
+    /// Immagine del server (`server-icon.png`), se c'è.
+    pub fn icon(&self, name: &str) -> Option<Vec<u8>> {
+        let path = self.dir(name).ok()?.join(ICON);
+        // Un'icona vera pesa pochi KB: un file enorme non si legge.
+        if std::fs::metadata(&path).ok()?.len() > MAX_ICON_BYTES {
+            return None;
+        }
+        std::fs::read(path).ok()
+    }
+
+    /// Imposta (`Some`, PNG 64×64 come vuole Minecraft) o toglie l'immagine.
+    /// Il gioco la mostra nella lista dei server; vale dal prossimo avvio.
+    pub fn set_icon(&self, name: &str, png: Option<&[u8]>) -> Result<()> {
+        self.load(name)?;
+        let path = self.dir(name)?.join(ICON);
+        match png {
+            Some(bytes) => {
+                check_icon(bytes)?;
+                fs::write_atomic(&path, bytes)?;
+            }
+            None => match std::fs::remove_file(&path) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
+                _ => {}
+            },
+        }
+        Ok(())
+    }
+
     /// Elimina configurazione e file del server (va fermato prima).
     pub fn delete(&self, name: &str) -> Result<()> {
         let dir = self.dir(name)?;
@@ -215,5 +266,34 @@ mod tests {
         manager.delete("Amici").unwrap();
         assert!(manager.list().is_empty());
         assert!(!manager.dir("Amici").unwrap().exists());
+    }
+
+    /// Intestazione minima di un PNG `w`×`h` (basta per il controllo).
+    fn png(w: u32, h: u32) -> Vec<u8> {
+        let mut b = b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR".to_vec();
+        b.extend(w.to_be_bytes());
+        b.extend(h.to_be_bytes());
+        b.extend([8, 6, 0, 0, 0]);
+        b
+    }
+
+    #[test]
+    fn server_icon_must_be_a_64px_png() {
+        let dir = tempfile::tempdir().unwrap();
+        let manager = ServerManager::new(Paths::new(dir.path()));
+        manager.save(&config("Amici")).unwrap();
+        std::fs::create_dir_all(manager.dir("Amici").unwrap()).unwrap();
+        assert!(manager.set_icon("Amici", Some(&png(128, 128))).is_err());
+        assert!(
+            manager
+                .set_icon("Amici", Some(b"GIF89a not a png"))
+                .is_err()
+        );
+        assert!(manager.set_icon("Nessuno", Some(&png(64, 64))).is_err());
+        manager.set_icon("Amici", Some(&png(64, 64))).unwrap();
+        assert_eq!(manager.icon("Amici"), Some(png(64, 64)));
+        manager.set_icon("Amici", None).unwrap();
+        assert_eq!(manager.icon("Amici"), None);
+        manager.set_icon("Amici", None).unwrap();
     }
 }

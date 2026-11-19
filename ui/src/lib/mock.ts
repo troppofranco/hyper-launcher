@@ -163,7 +163,7 @@ function statsPoint(s: MockServer, t: number): StatsPoint {
 
 const servers: MockServer[] = [
   {
-    info: { name: 'Server degli amici', kind: 'paper', version: '1.21.4', build: 232, memoryMb: 4096, port: 25565, keepRunning: true, autostart: false, created: now() - 86400 * 20, running: true, startedAt: now() - 8040, players: 2, maxPlayers: 20, address: '192.168.1.20:25565' },
+    info: { name: 'Server degli amici', kind: 'paper', version: '1.21.4', build: 232, memoryMb: 4096, port: 25565, keepRunning: true, autostart: false, created: now() - 86400 * 20, running: true, startedAt: now() - 8040, players: 2, maxPlayers: 20, address: '192.168.1.20:25565', icon: null },
     props: defaultProps(25565),
     players: {
       online: ['Marco', 'Giulia'],
@@ -191,7 +191,7 @@ const servers: MockServer[] = [
     ],
   },
   {
-    info: { name: 'Survival vanilla', kind: 'vanilla', version: '1.21.4', build: null, memoryMb: 3072, port: 25566, keepRunning: false, autostart: false, created: now() - 86400 * 4, running: false, startedAt: null, players: 0, maxPlayers: 10, address: '192.168.1.20:25566' },
+    info: { name: 'Survival vanilla', kind: 'vanilla', version: '1.21.4', build: null, memoryMb: 3072, port: 25566, keepRunning: false, autostart: false, created: now() - 86400 * 4, running: false, startedAt: null, players: 0, maxPlayers: 10, address: '192.168.1.20:25566', icon: null },
     props: { ...defaultProps(25566), maxPlayers: 10, motd: 'A Minecraft Server', onlineMode: true, whitelist: false },
     players: { online: [], ops: [], whitelist: [], banned: [] },
     console: [],
@@ -330,7 +330,7 @@ function serverCommands(): Record<string, (args: Record<string, any>) => unknown
       if (!input.eula) throw 'Per creare un server bisogna accettare l’EULA di Minecraft.';
       await simulateServerCreate(input.name);
       const s: MockServer = {
-        info: { name: input.name, kind: input.kind, version: input.version, build: input.kind === 'paper' ? 230 : null, memoryMb: input.memoryMb, port: input.port, keepRunning: input.keepRunning, autostart: input.autostart, created: now(), running: false, startedAt: null, players: 0, maxPlayers: 20, address: `192.168.1.20:${input.port}` },
+        info: { name: input.name, kind: input.kind, version: input.version, build: input.kind === 'paper' ? 230 : null, memoryMb: input.memoryMb, port: input.port, keepRunning: input.keepRunning, autostart: input.autostart, created: now(), running: false, startedAt: null, players: 0, maxPlayers: 20, address: `192.168.1.20:${input.port}`, icon: null },
         props: { ...defaultProps(input.port), motd: 'A Minecraft Server' },
         players: { online: [], ops: [], whitelist: [], banned: [] },
         console: [],
@@ -366,6 +366,11 @@ function serverCommands(): Record<string, (args: Record<string, any>) => unknown
     server_update: ({ name, update }) => {
       const s = findServer(name);
       Object.assign(s.info, update);
+      return structuredClone(s.info);
+    },
+    server_set_icon: ({ name, png }) => {
+      const s = findServer(name);
+      s.info.icon = png;
       return structuredClone(s.info);
     },
     server_players: ({ name }) => structuredClone(findServer(name).players),

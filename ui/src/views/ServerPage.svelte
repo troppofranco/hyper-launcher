@@ -14,6 +14,7 @@
   import Plugins from '../components/server/Plugins.svelte';
   import DeleteServerDialog from '../components/server/DeleteServerDialog.svelte';
   import { copyText, kindLabel, poll, uptime } from '../components/server/util';
+  import { pickFile, squarePng } from '../lib/image';
 
   let { name }: { name: string } = $props();
 
@@ -54,6 +55,30 @@
 
   const running = $derived(!!server?.running);
 
+  /**
+   * Immagine del server: ritagliata al centro e portata a 64×64, il formato
+   * che Minecraft mostra nella lista dei server. Nel gioco vale dal
+   * prossimo avvio.
+   */
+  async function setIcon(png: string | null) {
+    try {
+      server = await api.serverSetIcon(name, png);
+      if (running) app.info_(t('Immagine salvata: nel gioco si vede dal prossimo riavvio del server.'));
+    } catch (e) {
+      app.error(e);
+    }
+  }
+
+  async function pickIcon() {
+    const file = await pickFile('image/png,image/jpeg,image/webp,image/gif');
+    if (!file) return;
+    try {
+      await setIcon(await squarePng(file, 64));
+    } catch (e) {
+      app.error(e);
+    }
+  }
+
   // Sezioni della pagina, come le schede di un'istanza.
   type Tab = 'console' | 'players' | 'plugins' | 'files' | 'settings';
   let tab = $state<Tab>('console');
@@ -79,7 +104,13 @@
     <div class="card skeleton head-skel"></div>
   {:else}
     <header class="head enter">
-      <InstanceIcon name={server.name} size={52} />
+      <div class="icon-pick">
+        <button class="icon-btn-pick" aria-label={t('Cambia immagine del server')} title={t('Cambia immagine (si vede anche nella lista dei server di Minecraft)')} onclick={pickIcon}>
+          <InstanceIcon name={server.name} icon={server.icon} size={52} />
+          <span class="icon-overlay"><Icon name="image" size={18} /></span>
+        </button>
+        {#if server.icon}<button class="icon-reset" aria-label={t('Togli immagine')} title={t('Togli immagine')} onclick={() => setIcon(null)}><Icon name="close" size={12} /></button>{/if}
+      </div>
       <div class="title">
         <div class="name-row">
           <h1 class="page-title">{server.name}</h1>
@@ -136,6 +167,12 @@
   .back { align-self: flex-start; display: flex; align-items: center; gap: 6px; background: none; border: 0; color: var(--muted); padding: 0; font-size: 13px; }
   .back:hover { color: var(--text); }
   .head-skel { height: 80px; }
+  .icon-pick { position: relative; flex: none; }
+  .icon-btn-pick { position: relative; padding: 0; border: 0; background: none; border-radius: 14px; display: block; }
+  .icon-overlay { position: absolute; inset: 0; border-radius: 14px; background: rgba(8, 9, 12, .55); color: #fff; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity .18s ease; }
+  .icon-btn-pick:hover .icon-overlay, .icon-btn-pick:focus-visible .icon-overlay { opacity: 1; }
+  .icon-reset { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 11px; border: 2px solid var(--bg); background: var(--surface-2); color: var(--muted); display: flex; align-items: center; justify-content: center; padding: 0; opacity: 0; transition: opacity .18s; }
+  .icon-pick:hover .icon-reset, .icon-reset:focus-visible { opacity: 1; }
   .head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
   .title { flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 6px; }
   .name-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }

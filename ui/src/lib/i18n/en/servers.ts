@@ -170,4 +170,7 @@ export default {
   'Installazione…': 'Installing…',
   'Nessun plugin trovato per questa versione.': 'No plugins found for this version.',
   'Il server è acceso: fermalo per attivare, disattivare o eliminare i plugin. Puoi comunque installarne di nuovi.': 'The server is running: stop it to enable, disable or delete plugins. You can still install new ones.',
+  'Cambia immagine del server': 'Change server image',
+  'Cambia immagine (si vede anche nella lista dei server di Minecraft)': 'Change image (also shown in the Minecraft server list)',
+  'Immagine salvata: nel gioco si vede dal prossimo riavvio del server.': 'Image saved: it shows in the game after the next server restart.',
 };

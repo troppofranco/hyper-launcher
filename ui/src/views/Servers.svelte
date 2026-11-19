@@ -64,7 +64,7 @@
       {#each servers as s, i (s.name)}
         <section class="card server enter" style:--i={i} aria-label={s.name}>
           <div class="top">
-            <InstanceIcon name={s.name} size={48} />
+            <InstanceIcon name={s.name} icon={s.icon} size={48} />
             <span class="meta">
               <span class="name">{s.name}</span>
               <span class="sub">{kindLabel({ ...s, build: null })} · {gb(s.memoryMb)}{#if s.keepRunning} · {t('resta acceso')}{/if}</span>

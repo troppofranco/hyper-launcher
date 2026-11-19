@@ -115,6 +115,7 @@ fn main() {
             servers::server_console,
             servers::server_stats,
             servers::server_update,
+            servers::server_set_icon,
             servers::server_players,
             servers::server_properties,
             servers::server_save_properties,

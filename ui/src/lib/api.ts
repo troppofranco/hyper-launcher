@@ -208,6 +208,8 @@ export const api = {
   serverConsole: (name: string, since: number) => call<ConsoleChunk>('server_console', { name, since }),
   serverStats: (name: string) => call<ServerStats>('server_stats', { name }),
   serverUpdate: (name: string, update: ServerUpdate) => call<ServerInfo>('server_update', { name, update }),
+  /** Imposta (PNG 64×64 in base64) o toglie l'immagine del server. */
+  serverSetIcon: (name: string, png: string | null) => call<ServerInfo>('server_set_icon', { name, png }),
   serverPlayers: (name: string) => call<ServerPlayers>('server_players', { name }),
   serverProperties: (name: string) => call<ServerProperties>('server_properties', { name }),
   serverSaveProperties: (name: string, properties: ServerProperties) => call<void>('server_save_properties', { name, properties }),
@@ -243,6 +245,8 @@ export interface ServerInfo {
   maxPlayers: number;
   /** Indirizzo nella rete di casa (es. 192.168.1.20:25565). */
   address: string;
+  /** Immagine del server (PNG 64×64 come `data:` URL): logo qui e icona nel gioco. */
+  icon: string | null;
 }
 export interface NewServer { name: string; kind: ServerKind; version: string; memoryMb: number; port: number; keepRunning: boolean; autostart: boolean; eula: boolean }
 export interface ServerUpdate { memoryMb: number; keepRunning: boolean; autostart: boolean }
