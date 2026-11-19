@@ -122,6 +122,10 @@ fn main() {
             servers::server_read_file,
             servers::server_write_file,
             servers::server_delete_file,
+            servers::server_plugins,
+            servers::server_plugin_install,
+            servers::server_plugin_set_enabled,
+            servers::server_plugin_delete,
         ])
         .build(tauri::generate_context!());
     match result {

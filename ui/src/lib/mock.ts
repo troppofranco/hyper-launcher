@@ -2,7 +2,7 @@
 // della app vera, con dati di esempio in memoria. Non entra nella app Tauri
 // se non come codice inutilizzato.
 
-import type { Account, InstalledContent, Instance, SearchHit, ServerInfo, ServerPlayers, ServerProperties, Settings, StatsPoint } from './api';
+import type { Account, InstalledContent, Instance, SearchHit, ServerInfo, ServerPlayers, ServerPlugin, ServerProperties, Settings, StatsPoint } from './api';
 
 type Handler = (payload: unknown) => void;
 const handlers = new Map<string, Set<Handler>>();
@@ -29,6 +29,13 @@ const state: { instances: Instance[]; accounts: Account[]; settings: Settings; m
     { file: 'mia-mod-test.jar', name: 'mia-mod-test', enabled: true, sizeBytes: 40_000, projectId: null, slug: null, title: null, iconUrl: null, versionNumber: null, update: null, source: null, website: null },
   ],
 };
+
+const PLUGIN_HITS: SearchHit[] = [
+  { id: 'hXiIvTyT', slug: 'essentialsx', title: 'EssentialsX', description: 'The essential plugin suite for Minecraft servers.', author: 'EssentialsX', iconUrl: null, image: null, color: 0xe0592a, downloads: 2_400_000, updated: '2026-10-02T00:00:00Z', categories: ['utility'] },
+  { id: 'Vebnzrzj', slug: 'luckperms', title: 'LuckPerms', description: 'A permissions plugin for Minecraft servers.', author: 'Luck', iconUrl: null, image: null, color: 0x3fa7e0, downloads: 1_900_000, updated: '2026-09-21T00:00:00Z', categories: ['management'] },
+  { id: 'fALzjamp', slug: 'chunky', title: 'Chunky', description: 'Pre-generates chunks, quickly and efficiently.', author: 'pop4959', iconUrl: null, image: null, color: 0x56b04a, downloads: 1_200_000, updated: '2026-11-01T00:00:00Z', categories: ['optimization'] },
+  { id: 'swbUV1cr', slug: 'bluemap', title: 'BlueMap', description: 'A 3D map of your world, in the browser.', author: 'Blue', iconUrl: null, image: null, color: 0x2f6fdf, downloads: 900_000, updated: '2026-10-15T00:00:00Z', categories: ['utility'] },
+];
 
 const HITS: SearchHit[] = [
   { id: 'AANobbMI', slug: 'sodium', title: 'Sodium', description: 'A high-performance rendering engine replacement for Minecraft.', author: 'jellysquid3', iconUrl: null, image: null, color: 0x2f6fdf, downloads: 253_432_494, updated: '2026-11-12T01:12:22Z', categories: ['optimization'] },
@@ -102,6 +109,7 @@ interface MockServer {
   console: string[];
   points: StatsPoint[];
   files: Record<string, string | null>;
+  plugins: ServerPlugin[];
 }
 
 const clock = () => new Date().toTimeString().slice(0, 8);
@@ -176,6 +184,11 @@ const servers: MockServer[] = [
     ],
     points: [],
     files: serverFiles('paper'),
+    plugins: [
+      { file: 'EssentialsX-2.21.0.jar', enabled: true, sizeBytes: 3_100_000, projectId: 'hXiIvTyT', title: 'EssentialsX', iconUrl: null, versionNumber: '2.21.0' },
+      { file: 'LuckPerms-Bukkit-5.4.150.jar', enabled: true, sizeBytes: 2_000_000, projectId: 'Vebnzrzj', title: 'LuckPerms', iconUrl: null, versionNumber: '5.4.150' },
+      { file: 'vecchio-plugin.jar.disabled', enabled: false, sizeBytes: 120_000, projectId: null, title: null, iconUrl: null, versionNumber: null },
+    ],
   },
   {
     info: { name: 'Survival vanilla', kind: 'vanilla', version: '1.21.4', build: null, memoryMb: 3072, port: 25566, keepRunning: false, autostart: false, created: now() - 86400 * 4, running: false, startedAt: null, players: 0, maxPlayers: 10, address: '192.168.1.20:25566' },
@@ -184,6 +197,7 @@ const servers: MockServer[] = [
     console: [],
     points: [],
     files: serverFiles('vanilla'),
+    plugins: [],
   },
 ];
 // Cinque minuti di storia per il server acceso.
@@ -322,6 +336,7 @@ function serverCommands(): Record<string, (args: Record<string, any>) => unknown
         console: [],
         points: [],
         files: serverFiles(input.kind),
+        plugins: [],
       };
       servers.push(s);
       return structuredClone(s.info);
@@ -375,6 +390,28 @@ function serverCommands(): Record<string, (args: Record<string, any>) => unknown
       const s = findServer(name);
       for (const f of Object.keys(s.files)) if (f === path || f.startsWith(`${path}/`)) delete s.files[f];
     },
+    server_plugins: ({ name }) => structuredClone(findServer(name).plugins),
+    server_plugin_install: async ({ name, project }) => {
+      const s = findServer(name);
+      const h = PLUGIN_HITS.find((x) => x.id === project || x.slug === project);
+      if (!h) throw 'Plugin non trovato.';
+      if (s.plugins.some((p) => p.projectId === h.id)) throw `${h.title} è già installato.`;
+      await new Promise((r) => setTimeout(r, 900));
+      const file = `${h.slug}.jar`;
+      s.plugins.push({ file, enabled: true, sizeBytes: 1_400_000, projectId: h.id, title: h.title, iconUrl: null, versionNumber: '1.0.0' });
+      return [file];
+    },
+    server_plugin_set_enabled: ({ name, file, enabled }) => {
+      const p = findServer(name).plugins.find((x) => x.file === file);
+      if (!p) throw 'Plugin non trovato.';
+      p.enabled = enabled;
+      p.file = enabled ? p.file.replace(/\.disabled$/, '') : `${p.file}.disabled`;
+      return p.file;
+    },
+    server_plugin_delete: ({ name, file }) => {
+      const s = findServer(name);
+      s.plugins = s.plugins.filter((p) => p.file !== file);
+    },
   };
 }
 
@@ -426,7 +463,7 @@ const commands: Record<string, (args: Record<string, any>) => unknown> = {
   save_settings: ({ settings }) => { state.settings = settings; return settings.appearance.background === 'transparent'; },
   content_search: ({ input }) => {
     const q = String(input.text).toLowerCase();
-    const hits = HITS.filter((h) => !q || h.title.toLowerCase().includes(q) || h.description.toLowerCase().includes(q));
+    const hits = (input.kind === 'plugin' ? PLUGIN_HITS : HITS).filter((h) => !q || h.title.toLowerCase().includes(q) || h.description.toLowerCase().includes(q));
     return { hits: input.offset ? [] : hits, total: hits.length };
   },
   content_project: ({ id }) => {

@@ -8,7 +8,9 @@ use hyper_server::install::{self, CreateStage, NewServer};
 use hyper_server::players::{BannedEntry, PlayerEntry};
 use hyper_server::properties::{CommonSettings, Properties};
 use hyper_server::protocol::{RunningStatus, StatsPoint};
-use hyper_server::{HostClient, ServerConfig, ServerKind, ServerManager, autostart, files};
+use hyper_server::{
+    HostClient, ServerConfig, ServerKind, ServerManager, autostart, files, plugins,
+};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 
@@ -422,6 +424,78 @@ pub async fn server_delete_file(
         .await
         .cmd()?
         .cmd()
+}
+
+/// Cartella e versione di Minecraft di un server Paper (i plugin non
+/// esistono su Vanilla).
+fn paper_server(state: &AppState, name: &str) -> CmdResult<(std::path::PathBuf, String)> {
+    let manager = manager(state);
+    let config = manager.load(name).cmd()?;
+    if config.kind != ServerKind::Paper {
+        return Err("I plugin funzionano solo sui server Paper.".into());
+    }
+    Ok((manager.dir(name).cmd()?, config.version))
+}
+
+#[tauri::command]
+pub async fn server_plugins(
+    state: State<'_, AppState>,
+    name: String,
+) -> CmdResult<Vec<plugins::InstalledPlugin>> {
+    let (dir, _) = paper_server(&state, &name)?;
+    plugins::installed(&state.modrinth, &dir).await.cmd()
+}
+
+/// Installa un plugin da Modrinth (con le dipendenze obbligatorie);
+/// restituisce i file scaricati. Vale dal prossimo avvio del server.
+#[tauri::command]
+pub async fn server_plugin_install(
+    state: State<'_, AppState>,
+    name: String,
+    project: String,
+) -> CmdResult<Vec<String>> {
+    let (dir, version) = paper_server(&state, &name)?;
+    let installer = state.installer();
+    plugins::install(
+        &state.modrinth,
+        installer.downloader(),
+        &dir,
+        &project,
+        &version,
+    )
+    .await
+    .cmd()
+}
+
+/// A server acceso Windows tiene aperti i jar: si possono toccare solo da spento.
+async fn plugins_unlocked(state: &AppState, name: &str) -> CmdResult<()> {
+    if is_running(state, name).await {
+        return Err("Ferma il server per attivare, disattivare o eliminare i plugin.".into());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn server_plugin_set_enabled(
+    state: State<'_, AppState>,
+    name: String,
+    file: String,
+    enabled: bool,
+) -> CmdResult<String> {
+    let (dir, _) = paper_server(&state, &name)?;
+    plugins_unlocked(&state, &name).await?;
+    plugins::set_enabled(&dir, &file, enabled).cmd()
+}
+
+#[tauri::command]
+pub async fn server_plugin_delete(
+    state: State<'_, AppState>,
+    name: String,
+    file: String,
+) -> CmdResult<()> {
+    let (dir, _) = paper_server(&state, &name)?;
+    plugins_unlocked(&state, &name).await?;
+    plugins::remove(&dir, &file).cmd()
 }
 
 /// Alla chiusura del launcher: ferma i server senza "resta acceso".

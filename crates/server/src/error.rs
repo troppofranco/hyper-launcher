@@ -10,6 +10,10 @@ pub enum ServerError {
     #[error(transparent)]
     Installer(Box<InstallerError>),
 
+    /// In `Box` come quelli dell'installer.
+    #[error(transparent)]
+    Content(Box<hyper_content::ContentError>),
+
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 

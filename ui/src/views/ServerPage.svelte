@@ -11,6 +11,7 @@
   import Players from '../components/server/Players.svelte';
   import ServerSettings from '../components/server/ServerSettings.svelte';
   import FileBrowser from '../components/server/FileBrowser.svelte';
+  import Plugins from '../components/server/Plugins.svelte';
   import DeleteServerDialog from '../components/server/DeleteServerDialog.svelte';
   import { copyText, kindLabel, poll, uptime } from '../components/server/util';
 
@@ -52,6 +53,21 @@
   }
 
   const running = $derived(!!server?.running);
+
+  // Sezioni della pagina, come le schede di un'istanza.
+  type Tab = 'console' | 'players' | 'plugins' | 'files' | 'settings';
+  let tab = $state<Tab>('console');
+  const tabs = $derived<[Tab, string][]>([
+    ['console', t('Console')],
+    ['players', running && server?.players ? t('Giocatori · {n}', { n: server.players }) : t('Giocatori')],
+    // I plugin esistono solo su Paper.
+    ...(server?.kind === 'paper' ? [['plugins', t('Plugin')] as [Tab, string]] : []),
+    ['files', t('File')],
+    ['settings', t('Impostazioni')],
+  ]);
+  $effect(() => {
+    if (server && server.kind !== 'paper' && tab === 'plugins') tab = 'console';
+  });
 </script>
 
 <div class="page">
@@ -72,10 +88,10 @@
         <div class="sub">
           <span class="kind">{kindLabel(server)}</span>
           <span>{t('Indirizzo:')} <span class="addr">{server.address}</span></span>
-          <button class="link" onclick={() => copyText(server!.address)}>{t('Copia')}</button>
         </div>
       </div>
       <div class="actions">
+        <button class="btn" title={server.address} onclick={() => copyText(server!.address)}><Icon name="copy" size={16} /> {t('Copia IP')}</button>
         {#if running}
           <button class="btn" disabled={!!busy} onclick={() => act('restart')}><Icon name="refresh" size={16} /> {busy === 'restart' ? t('Riavvio…') : t('Riavvia')}</button>
           <button class="btn danger" disabled={!!busy} onclick={() => act('stop')}>{busy === 'stop' ? t('Spegnimento…') : t('Ferma')}</button>
@@ -86,13 +102,28 @@
       </div>
     </header>
 
-    <div class="enter" style:--i={1}><Console {name} {running} /></div>
-    <div class="enter" style:--i={2}><StatsCharts {name} {running} maxPlayers={server.maxPlayers} /></div>
-    <div class="two enter" style:--i={3}>
-      <Players {name} {running} />
-      <ServerSettings {server} onchanged={refresh} onrestart={() => act('restart')} />
+    <div class="tabs enter" style:--i={1} role="tablist" aria-label={t('Sezioni del server')}>
+      {#each tabs as [id, label] (id)}
+        <button role="tab" aria-selected={tab === id} class:on={tab === id} onclick={() => (tab = id)}>{label}</button>
+      {/each}
     </div>
-    <div class="enter" style:--i={4}><FileBrowser {name} {running} /></div>
+
+    {#key tab}
+      <div class="section enter" role="tabpanel">
+        {#if tab === 'console'}
+          <Console {name} {running} />
+          <StatsCharts {name} {running} maxPlayers={server.maxPlayers} />
+        {:else if tab === 'players'}
+          <Players {name} {running} />
+        {:else if tab === 'plugins'}
+          <Plugins {name} version={server.version} {running} onrestart={() => act('restart')} />
+        {:else if tab === 'files'}
+          <FileBrowser {name} {running} />
+        {:else}
+          <ServerSettings {server} onchanged={refresh} onrestart={() => act('restart')} />
+        {/if}
+      </div>
+    {/key}
   {/if}
 </div>
 
@@ -116,10 +147,13 @@
   .sub { display: flex; gap: 10px; align-items: center; color: var(--muted); font-size: 13px; flex-wrap: wrap; }
   .kind { font-family: var(--mono); font-size: 12px; padding: 2px 8px; border-radius: 6px; background: var(--surface-2); color: var(--text-2); }
   .addr { font-family: var(--mono); color: var(--text); user-select: text; }
-  .link { border: 0; background: none; padding: 0; color: var(--accent-line); font-size: 13px; font-weight: 600; }
-  .link:hover { text-decoration: underline; }
-  .actions { display: flex; gap: 10px; }
+
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; }
   .icon-only { width: 44px; padding: 0; }
   .icon-only:hover:not(:disabled) { color: var(--danger-text); border-color: color-mix(in srgb, var(--danger) 60%, transparent); }
-  .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 14px; align-items: start; }
+  .tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+  .tabs button { height: 44px; padding: 0 16px; background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--muted); font-weight: 600; white-space: nowrap; transition: color .2s, border-color .2s; }
+  .tabs button:hover { color: var(--text); }
+  .tabs button.on { color: var(--text); border-bottom-color: var(--accent-line); }
+  .section { display: flex; flex-direction: column; gap: 14px; }
 </style>

@@ -28,7 +28,7 @@ export interface ServerStatus { online: number; max: number; version: string; mo
 export interface Account { name: string; uuid: string; kind: 'offline' | 'microsoft'; default: boolean; skin: string | null }
 export interface VersionInfo { id: string; kind: string; releaseTime: string }
 export interface Versions { latestRelease: string; latestSnapshot: string; versions: VersionInfo[] }
-export type ContentKind = 'mod' | 'resourcepack' | 'shader' | 'datapack' | 'modpack';
+export type ContentKind = 'mod' | 'resourcepack' | 'shader' | 'datapack' | 'modpack' | 'plugin';
 export type ContentDirName = 'mods' | 'resourcepacks' | 'shaderpacks';
 export type SearchSort = 'relevance' | 'downloads' | 'updated';
 export interface SearchHit { id: string; slug: string; title: string; description: string; author: string; iconUrl: string | null; image: string | null; color: number | null; downloads: number; updated: string; categories: string[] }
@@ -216,6 +216,12 @@ export const api = {
   serverReadFile: (name: string, path: string) => call<string>('server_read_file', { name, path }),
   serverWriteFile: (name: string, path: string, content: string) => call<void>('server_write_file', { name, path, content }),
   serverDeleteFile: (name: string, path: string) => call<void>('server_delete_file', { name, path }),
+  serverPlugins: (name: string) => call<ServerPlugin[]>('server_plugins', { name }),
+  /** Installa un plugin da Modrinth con le dipendenze; restituisce i file scaricati. */
+  serverPluginInstall: (name: string, project: string) => call<string[]>('server_plugin_install', { name, project }),
+  /** Attiva o disattiva un plugin; restituisce il nuovo nome del file. */
+  serverPluginSetEnabled: (name: string, file: string, enabled: boolean) => call<string>('server_plugin_set_enabled', { name, file, enabled }),
+  serverPluginDelete: (name: string, file: string) => call<void>('server_plugin_delete', { name, file }),
 };
 
 export type ServerKind = 'vanilla' | 'paper';
@@ -245,6 +251,11 @@ export interface ConsoleChunk { lines: string[]; next: number }
 export interface StatsPoint { t: number; cpu: number; memMb: number; players: number; latencyMs: number | null }
 export interface ServerStats { points: StatsPoint[]; memMaxMb: number; online: string[] }
 export interface ServerFile { name: string; dir: boolean; size: number; modified: number }
+/** Un plugin nella cartella `plugins/` di un server Paper. */
+export interface ServerPlugin {
+  file: string; enabled: boolean; sizeBytes: number;
+  projectId: string | null; title: string | null; iconUrl: string | null; versionNumber: string | null;
+}
 export interface PlayerEntry { name: string; uuid: string }
 export interface ServerPlayers { online: string[]; ops: PlayerEntry[]; whitelist: PlayerEntry[]; banned: (PlayerEntry & { reason: string })[] }
 export interface ServerProperties {

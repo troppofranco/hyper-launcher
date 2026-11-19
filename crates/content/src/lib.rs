@@ -35,6 +35,8 @@ pub enum ContentKind {
     Shader,
     DataPack,
     Modpack,
+    /// Plugin per i server Paper (Bukkit, Spigot, Paper).
+    Plugin,
 }
 
 impl ContentKind {
@@ -45,6 +47,7 @@ impl ContentKind {
             Self::Shader => "shader",
             Self::DataPack => "datapack",
             Self::Modpack => "modpack",
+            Self::Plugin => "plugin",
         }
     }
 
@@ -55,7 +58,7 @@ impl ContentKind {
             Self::Mod => Some(ContentDir::Mods),
             Self::ResourcePack => Some(ContentDir::ResourcePacks),
             Self::Shader => Some(ContentDir::ShaderPacks),
-            Self::DataPack | Self::Modpack => None,
+            Self::DataPack | Self::Modpack | Self::Plugin => None,
         }
     }
 
@@ -79,6 +82,8 @@ impl ContentKind {
             (Self::Shader, _) => Err(ContentError::ShadersNeedIris),
             (Self::ResourcePack, _) => Ok(&["minecraft"]),
             (Self::DataPack, _) => Ok(&["datapack"]),
+            // Paper carica anche i plugin Spigot e Bukkit.
+            (Self::Plugin, _) => Ok(&["paper", "spigot", "bukkit"]),
         }
     }
 }
@@ -114,10 +119,11 @@ mod tests {
             ContentKind::Shader,
             ContentKind::DataPack,
             ContentKind::Modpack,
+            ContentKind::Plugin,
         ] {
             assert_eq!(kind.project_type().parse::<ContentKind>().unwrap(), kind);
         }
-        assert!("plugin".parse::<ContentKind>().is_err());
+        assert!("world".parse::<ContentKind>().is_err());
         assert!(matches!(
             ContentKind::Mod.loaders(None),
             Err(ContentError::NeedsLoader)

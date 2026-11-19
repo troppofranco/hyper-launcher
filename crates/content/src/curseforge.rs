@@ -44,6 +44,7 @@ pub fn class_id(kind: ContentKind) -> u32 {
         ContentKind::Shader => 6552,
         ContentKind::DataPack => 6945,
         ContentKind::Modpack => 4471,
+        ContentKind::Plugin => 5,
     }
 }
 

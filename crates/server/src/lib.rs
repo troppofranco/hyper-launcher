@@ -18,6 +18,7 @@ pub mod files;
 pub mod host;
 pub mod install;
 pub mod players;
+pub mod plugins;
 pub mod properties;
 pub mod protocol;
 
