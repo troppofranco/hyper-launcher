@@ -1,9 +1,11 @@
 <script lang="ts">
-  // File del server: elenco della cartella a sinistra, editor di testo a
-  // destra. I file binari o troppo grandi mostrano il messaggio del backend.
+  // File del server: l'elenco della cartella a tutta larghezza, come i
+  // plugin; aprendo un file l'editor prende il suo posto. I file binari o
+  // troppo grandi mostrano il messaggio del backend.
   import { api, type ServerFile } from '../../lib/api';
   import { app } from '../../lib/store.svelte';
   import { t } from '../../lib/i18n.svelte';
+  import { relativeDay } from '../../lib/format';
   import Icon from '../Icon.svelte';
   import Modal from '../Modal.svelte';
 
@@ -25,6 +27,8 @@
   const dirty = $derived(!!open && open.content !== open.original);
   const lineCount = $derived(open ? open.content.split('\n').length : 0);
   const selected = $derived(open?.path ?? openError?.path ?? null);
+  /** Un file è aperto (o in apertura): l'editor sostituisce l'elenco. */
+  const editing = $derived(!!open || !!openError || loadingFile);
 
   async function list(dir: string) {
     try {
@@ -70,6 +74,14 @@
     const full = join(path, f.name);
     if (f.dir) void list(full);
     else if (full !== selected) guard(() => void openFile(full));
+  }
+
+  /** Torna all'elenco (chiedendo conferma se ci sono modifiche). */
+  function close() {
+    guard(() => {
+      open = null;
+      openError = null;
+    });
   }
 
   function up() {
@@ -131,54 +143,61 @@
 </script>
 
 <section class="card panel" aria-labelledby="files-{name}">
-  <div class="side">
-    <h2 id="files-{name}">{t('File')}</h2>
-    <nav class="crumbs" aria-label={t('Percorso')}>
-      <button aria-label={t('Cartella principale')} onclick={() => void list('')}>/</button>
-      {#each crumbs as c, i (i)}
-        {#if i > 0}<span class="sep">/</span>{/if}<button onclick={() => void list(crumbs.slice(0, i + 1).join('/'))}>{c}</button>
-      {/each}
-    </nav>
-    <ul class="list scroll">
+  {#if editing}
+    <header class="ebar">
+      <button class="btn small" onclick={close}><Icon name="back" size={14} /> {t('File')}</button>
+      <span class="ename" id="files-{name}">{selected ?? ''}{#if dirty} <span class="mod">· {t('modificato')}</span>{/if}</span>
+      {#if open}
+        <span class="einfo">{t('{n} righe', { n: lineCount })}</span>
+        <button class="btn small primary" disabled={!dirty || saving} onclick={save}>{saving ? t('Salvataggio…') : t('Salva')}</button>
+      {/if}
+    </header>
+    {#if open}
+      <textarea bind:value={open.content} {onkeydown} spellcheck="false" aria-label={t('Contenuto di {file}', { file: open.path })}></textarea>
+    {:else if openError}
+      <div class="placeholder"><span class="err">{openError.message}</span></div>
+    {:else}
+      <div class="placeholder muted">{t('Apertura…')}</div>
+    {/if}
+  {:else}
+    <header class="head">
+      <h2 id="files-{name}">{t('File')}</h2>
+      <nav class="crumbs" aria-label={t('Percorso')}>
+        <button aria-label={t('Cartella principale')} onclick={() => void list('')}>/</button>
+        {#each crumbs as c, i (i)}
+          {#if i > 0}<span class="sep">/</span>{/if}<button onclick={() => void list(crumbs.slice(0, i + 1).join('/'))}>{c}</button>
+        {/each}
+      </nav>
+    </header>
+    <ul class="list">
       {#if path}
-        <li><button class="entry" onclick={up}><span class="ico"><Icon name="back" size={14} /></span><span class="fname">..</span></button></li>
+        <li class="row">
+          <button class="entry" onclick={up}><span class="ico"><Icon name="back" size={16} /></span><span class="fname">..</span></button>
+        </li>
       {/if}
       {#if files === null}
-        <li class="skeleton skel"></li>
+        <li class="pad"><div class="skeleton skel"></div></li>
       {:else}
-        {#each sorted as f (f.name)}
-          {@const full = join(path, f.name)}
-          <li class="item">
-            <button class="entry" class:on={selected === full} onclick={() => activate(f)} aria-current={selected === full ? 'true' : undefined}>
-              <span class="ico"><Icon name={f.dir ? 'folder' : 'file'} size={14} /></span>
+        {#each sorted as f, i (f.name)}
+          <li class="row enter" style:--i={Math.min(i, 12)}>
+            <button class="entry" onclick={() => activate(f)}>
+              <span class="ico" class:dir={f.dir}><Icon name={f.dir ? 'folder' : 'file'} size={16} /></span>
               <span class="fname">{f.name}</span>
-              {#if !f.dir}<span class="fsize">{size(f.size)}</span>{/if}
+              <span class="fdate">{relativeDay(f.modified)}</span>
+              <span class="fsize">{f.dir ? '' : size(f.size)}</span>
             </button>
-            {#if !f.dir}
-              <button class="del" aria-label={t('Elimina {file}', { file: f.name })} title={t('Elimina')} onclick={() => remove(f)}><Icon name="trash" size={14} /></button>
+            {#if f.dir}
+              <span class="del-space"></span>
+            {:else}
+              <button class="del" aria-label={t('Elimina {file}', { file: f.name })} title={t('Elimina')} onclick={() => remove(f)}><Icon name="trash" size={16} /></button>
             {/if}
           </li>
         {:else}
-          <li class="muted small empty">{t('Cartella vuota.')}</li>
+          <li class="muted small pad">{t('Cartella vuota.')}</li>
         {/each}
       {/if}
     </ul>
-  </div>
-
-  <div class="editor">
-    {#if open}
-      <div class="ebar">
-        <span class="ename">{open.path}{#if dirty} <span class="mod">· {t('modificato')}</span>{/if}</span>
-        <span class="einfo">{t('{n} righe', { n: lineCount })}</span>
-        <button class="btn small primary" disabled={!dirty || saving} onclick={save}>{saving ? t('Salvataggio…') : t('Salva')}</button>
-      </div>
-      <textarea bind:value={open.content} {onkeydown} spellcheck="false" aria-label={t('Contenuto di {file}', { file: open.path })}></textarea>
-    {:else if openError}
-      <div class="placeholder"><span class="strong">{openError.path}</span><span class="err">{openError.message}</span></div>
-    {:else}
-      <div class="placeholder muted">{loadingFile ? t('Apertura…') : t('Scegli un file di testo per modificarlo.')}</div>
-    {/if}
-  </div>
+  {/if}
 </section>
 
 {#if ask}
@@ -192,37 +211,37 @@
 {/if}
 
 <style>
-  .panel { padding: 16px; display: flex; gap: 14px; height: 340px; min-width: 0; }
-  .side { flex: 0 0 300px; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-  h2 { font-size: 16px; font-weight: 600; }
+  .panel { overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
+  .head { display: flex; align-items: baseline; gap: 12px; padding: 14px 16px 10px; flex-wrap: wrap; }
+  h2 { margin: 0; font-size: 15px; font-weight: 600; }
   .crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
   .crumbs button { border: 0; background: none; padding: 2px 4px; border-radius: 5px; color: var(--muted); font-family: var(--mono); font-size: 12px; }
   .crumbs button:hover { background: var(--surface-2); color: var(--text); }
   .sep { color: var(--faint); }
-  .list { list-style: none; margin: 0; padding: 0 4px 0 0; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 2px; }
-  .item { display: flex; align-items: center; gap: 2px; }
-  .entry { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--text-2); text-align: left; }
+  .list { list-style: none; margin: 0; padding: 0; }
+  .row { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-top: 1px solid var(--line); }
+  .entry { flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; height: 40px; padding: 0 8px; border: 0; border-radius: 8px; background: transparent; color: var(--text-2); text-align: left; }
   .entry:hover { background: var(--surface-2); color: var(--text); }
-  .entry.on { background: var(--accent-soft); color: var(--text); }
-  .ico { display: flex; color: var(--muted); flex: none; }
-  .fname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .fsize { font-size: 12px; color: var(--muted); flex: none; font-variant-numeric: tabular-nums; }
-  .del { width: 28px; height: 28px; flex: none; border: 0; border-radius: 7px; background: transparent; color: var(--faint); display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity .15s ease; }
-  .item:hover .del, .del:focus-visible { opacity: 1; }
+  .ico { width: 30px; height: 30px; border-radius: 8px; background: var(--surface-2); display: flex; align-items: center; justify-content: center; color: var(--muted); flex: none; }
+  .ico.dir { color: var(--accent-line); }
+  .fname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+  .fdate { flex: 0 0 120px; font-size: 12px; color: var(--muted); text-align: right; }
+  .fsize { flex: 0 0 72px; font-size: 12px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+  .del, .del-space { width: 36px; height: 36px; flex: none; }
+  .del { border: 0; border-radius: 8px; background: transparent; color: var(--muted); display: flex; align-items: center; justify-content: center; }
   .del:hover { color: var(--danger-text); background: var(--surface-2); }
   .skel { height: 32px; border-radius: 8px; }
-  .empty { padding: 6px 10px; }
-  .editor { flex: 1; min-width: 0; display: flex; flex-direction: column; border-radius: var(--radius-sm); background: var(--bg-deep); border: 1px solid var(--line); overflow: hidden; }
-  .ebar { display: flex; align-items: center; gap: 12px; padding: 6px 8px 6px 12px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+  .pad { padding: 12px 16px 16px; }
+  .ebar { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted); }
   .ename { flex: 1; min-width: 0; font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
-  .mod { color: var(--warn-text); }
+  .mod { color: var(--warn-text); margin-left: 4px; }
   .einfo { font-variant-numeric: tabular-nums; }
-  .ebar .btn { height: 28px; }
-  textarea { flex: 1; min-height: 0; resize: none; border: 0; outline: none; background: transparent; padding: 10px 14px; font-family: var(--mono); font-size: 12px; line-height: 1.6; color: var(--text-2); tab-size: 2; white-space: pre; }
-  .placeholder { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 20px; text-align: center; }
-  .strong { font-weight: 600; font-family: var(--mono); font-size: 12px; }
+  .ebar .btn { height: 30px; display: inline-flex; align-items: center; gap: 6px; }
+  /* L'editor occupa tutta la larghezza e quasi tutta l'altezza visibile. */
+  textarea { height: clamp(360px, calc(100dvh - 300px), 1200px); resize: none; border: 0; outline: none; background: var(--bg-deep); padding: 12px 16px; font-family: var(--mono); font-size: 12.5px; line-height: 1.6; color: var(--text-2); tab-size: 2; white-space: pre; }
+  .placeholder { min-height: 240px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 20px; text-align: center; }
   .err { color: var(--danger-text); max-width: 420px; user-select: text; }
   .ask { margin: 0; line-height: 1.5; }
   .actions { display: flex; justify-content: flex-end; gap: 10px; }
-  @media (max-width: 760px) { .panel { flex-direction: column; height: auto; } .side { flex-basis: auto; max-height: 260px; } .editor { height: 300px; } }
+  @media (max-width: 640px) { .fdate { display: none; } }
 </style>
