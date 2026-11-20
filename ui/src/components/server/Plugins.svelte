@@ -1,20 +1,25 @@
 <script lang="ts">
-  // Plugin di un server Paper: quelli installati (riconosciuti su Modrinth
+  // Plugin di un server Paper (o mod di un server Fabric, NeoForge, Forge): quelli installati (riconosciuti su Modrinth
   // dal loro hash) e la ricerca nel catalogo Modrinth per aggiungerne altri.
   // Ogni modifica vale dal prossimo avvio del server.
-  import { api, type SearchHit, type ServerPlugin } from '../../lib/api';
+  import { api, type SearchHit, type ServerKind, type ServerPlugin } from '../../lib/api';
   import { app } from '../../lib/store.svelte';
   import { t } from '../../lib/i18n.svelte';
   import { compact, megabytes } from '../../lib/format';
   import Icon from '../Icon.svelte';
   import ProjectIcon from '../ProjectIcon.svelte';
 
-  let { name, version, running, onrestart }: {
+  let { name, kind, version, running, onrestart }: {
     name: string;
+    kind: ServerKind;
     version: string;
     running: boolean;
     onrestart: () => void;
   } = $props();
+
+  // Mod per i server con loader, plugin per Paper.
+  const mods = $derived(kind !== 'paper');
+  const loaderName = $derived(({ fabric: 'Fabric', neoforge: 'NeoForge', forge: 'Forge' } as Record<string, string>)[kind] ?? 'Paper');
 
   let installed = $state<ServerPlugin[]>([]);
   let loading = $state(true);
@@ -44,10 +49,11 @@
     try {
       const res = await api.search({
         text,
-        kind: 'plugin',
+        kind: mods ? 'mod' : 'plugin',
         instance: null,
         gameVersion: version,
-        loaders: ['paper', 'spigot', 'bukkit'],
+        loaders: mods ? [kind] : ['paper', 'spigot', 'bukkit'],
+        serverSide: mods,
         categories: [],
         sort: text.trim() ? 'relevance' : 'downloads',
         offset: 0,
@@ -110,7 +116,7 @@
   {#if pending}
     <div class="banner enter">
       <Icon name="refresh" size={16} />
-      <span class="grow">{t('Le modifiche ai plugin valgono dal prossimo riavvio del server.')}</span>
+      <span class="grow">{mods ? t('Le modifiche alle mod valgono dal prossimo riavvio del server.') : t('Le modifiche ai plugin valgono dal prossimo riavvio del server.')}</span>
       <button class="btn small primary" onclick={() => { pending = false; onrestart(); }}>{t('Riavvia ora')}</button>
     </div>
   {/if}
@@ -120,10 +126,10 @@
       <h2>{t('Installati')}{#if installed.length}<span class="count">{installed.length}</span>{/if}</h2>
     </header>
     {#if running && installed.length}
-      <p class="note">{t('Il server è acceso: fermalo per attivare, disattivare o eliminare i plugin. Puoi comunque installarne di nuovi.')}</p>
+      <p class="note">{mods ? t('Il server è acceso: fermalo per attivare, disattivare o eliminare le mod. Puoi comunque installarne di nuove.') : t('Il server è acceso: fermalo per attivare, disattivare o eliminare i plugin. Puoi comunque installarne di nuovi.')}</p>
     {/if}
     {#if loading && !installed.length}
-      <p class="muted pad">{t('Lettura dei plugin e controllo su Modrinth…')}</p>
+      <p class="muted pad">{mods ? t('Lettura delle mod e controllo su Modrinth…') : t('Lettura dei plugin e controllo su Modrinth…')}</p>
     {/if}
     {#each installed as p, i (p.file)}
       <div class="row enter" style:--i={i} class:off={!p.enabled}>
@@ -142,17 +148,17 @@
           onclick={() => act(() => api.serverPluginDelete(name, p.file))}><Icon name="trash" size={18} /></button>
       </div>
     {:else}
-      {#if !loading}<p class="muted pad">{t('Nessun plugin: cercane uno qui sotto.')}</p>{/if}
+      {#if !loading}<p class="muted pad">{mods ? t('Nessuna mod: cercane una qui sotto.') : t('Nessun plugin: cercane uno qui sotto.')}</p>{/if}
     {/each}
   </section>
 
   <section class="card">
     <header class="head">
       <h2>{t('Aggiungi da Modrinth')}</h2>
-      <span class="muted small">{t('Compatibili con Paper {version}', { version })}</span>
+      <span class="muted small">{t('Compatibili con {loader} {version}', { loader: loaderName, version })}{#if mods} · {t('solo quelle per server')}{/if}</span>
     </header>
     <div class="search">
-      <input class="input" type="search" placeholder={t('Cerca plugin (es. EssentialsX, LuckPerms)…')} aria-label={t('Cerca plugin')} bind:value={query} />
+      <input class="input" type="search" placeholder={mods ? t('Cerca mod (es. Lithium, Chunky)…') : t('Cerca plugin (es. EssentialsX, LuckPerms)…')} aria-label={mods ? t('Cerca mod') : t('Cerca plugin')} bind:value={query} />
     </div>
     {#each hits as h, i (h.id)}
       <div class="row enter" style:--i={i}>
@@ -173,7 +179,7 @@
         {/if}
       </div>
     {:else}
-      <p class="muted pad">{searching ? t('Ricerca su Modrinth…') : t('Nessun plugin trovato per questa versione.')}</p>
+      <p class="muted pad">{searching ? t('Ricerca su Modrinth…') : (mods ? t('Nessuna mod trovata per questa versione.') : t('Nessun plugin trovato per questa versione.'))}</p>
     {/each}
   </section>
 </div>

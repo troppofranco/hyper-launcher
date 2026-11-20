@@ -1,6 +1,6 @@
 // Stato globale dell'interfaccia (rune di Svelte 5).
 
-import { api, on, type Account, type AppInfo, type BlockedFile, type PackImport, type ContentKind, type Instance, type News, type SearchHit, type SearchSort, type Settings, type UpdateInfo, type Versions } from './api';
+import { api, on, type Account, type AppInfo, type BlockedFile, type CrashInfo, type PackImport, type ContentKind, type Instance, type News, type SearchHit, type SearchSort, type Settings, type UpdateInfo, type Versions } from './api';
 import { setLang, t } from './i18n.svelte';
 import { demoRoute } from './mock';
 import { applyAppearance } from './look';
@@ -76,6 +76,8 @@ class AppStore {
   toast = $state<{ kind: 'error' | 'info'; text: string } | null>(null);
   newInstanceOpen = $state(false);
   addAccountOpen = $state(false);
+  /** Ultimo crash del gioco da mostrare (dialogo con causa e consiglio). */
+  crash = $state<{ instance: string; info: CrashInfo; exitCode: number | null } | null>(null);
   private versions: Promise<Versions> | null = null;
   private nextLogId = 0;
 
@@ -100,6 +102,7 @@ class AppStore {
           delete this.launches[s.instance];
           this.sessionsRev++;
           if (s.error) this.error(s.error);
+          else if (s.crash) this.crash = { instance: s.instance, info: s.crash, exitCode: s.exitCode };
           else if (s.exitCode !== null && s.exitCode !== 0) this.error(t('Minecraft si è chiuso con un errore (codice {codice}). Guarda la console.', { codice: s.exitCode }));
           void this.refreshInstances();
         } else {
@@ -289,14 +292,14 @@ class AppStore {
     }
   }
 
-  async play(name: string) {
+  async play(name: string, join: string | null = null) {
     if (!this.activeAccount) {
       this.addAccountOpen = true;
       this.info_(t('Aggiungi un account per giocare.'));
       return;
     }
     try {
-      await api.launch(name);
+      await api.launch(name, join);
     } catch (e) {
       this.error(e);
     }

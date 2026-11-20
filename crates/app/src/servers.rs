@@ -54,6 +54,12 @@ pub struct ServerInfoView {
     pub kind: ServerKind,
     pub version: String,
     pub build: Option<u32>,
+    /// Versione del loader (Fabric, NeoForge, Forge).
+    pub loader_version: Option<String>,
+    /// Modpack di origine (nome e progetto Modrinth), se c'è.
+    pub modpack: Option<hyper_server::config::ModpackSource>,
+    /// Automatismi (riavvio giornaliero, backup automatici).
+    pub schedule: hyper_server::config::Schedule,
     pub memory_mb: u32,
     pub port: u16,
     pub keep_running: bool,
@@ -123,6 +129,9 @@ fn view(
         kind: config.kind,
         version: config.version,
         build: config.build,
+        loader_version: config.loader_version.clone(),
+        modpack: config.modpack.clone(),
+        schedule: config.schedule.clone(),
         memory_mb: config.memory_mb,
         port: config.port,
         keep_running: config.keep_running,
@@ -155,6 +164,9 @@ pub struct NewServerInput {
     pub keep_running: bool,
     pub autostart: bool,
     pub eula: bool,
+    /// Versione del loader (Fabric, NeoForge, Forge); assente = l'ultima.
+    #[serde(default)]
+    pub loader_version: Option<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -181,6 +193,7 @@ pub async fn server_create(
         keep_running: input.keep_running,
         autostart: input.autostart,
         eula: input.eula,
+        loader_version: input.loader_version,
     };
     let report = |stage: CreateStage, done: usize, total: usize| {
         let _ = app.emit(
@@ -201,6 +214,128 @@ pub async fn server_create(
     )
     .await
     .cmd()?;
+    sync_autostart(&state);
+    info(&state, config).await
+}
+
+/// Un `.mrpack` scelto dal PC, con quello che serve per mostrarlo.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PickedModpack {
+    pub path: String,
+    pub name: String,
+    pub game: String,
+    /// "Fabric 0.16.10", oppure `None` per un pack vanilla.
+    pub loader: Option<String>,
+}
+
+/// Fa scegliere un `.mrpack` e ne legge l'indice; `None` se si annulla.
+#[tauri::command]
+pub async fn server_pick_modpack(app: AppHandle) -> CmdResult<Option<PickedModpack>> {
+    use tauri_plugin_dialog::DialogExt;
+    let Some(file) = app
+        .dialog()
+        .file()
+        .set_title("Scegli un modpack Modrinth")
+        .add_filter("Modpack Modrinth", &["mrpack"])
+        .blocking_pick_file()
+    else {
+        return Ok(None);
+    };
+    let path = file.into_path().cmd()?;
+    let index = hyper_content::mrpack::read_index(&path).cmd()?;
+    let (game, loader) = hyper_content::mrpack::requirements(&index).cmd()?;
+    Ok(Some(PickedModpack {
+        path: path.display().to_string(),
+        name: index.name,
+        game,
+        loader: loader.map(|l| format!("{} {}", l.kind.display_name(), l.version)),
+    }))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModpackServerInput {
+    pub name: String,
+    pub memory_mb: u32,
+    pub port: u16,
+    pub keep_running: bool,
+    pub autostart: bool,
+    pub eula: bool,
+    /// Progetto Modrinth (id o slug), oppure…
+    pub project: Option<String>,
+    /// …un `.mrpack` scelto con `server_pick_modpack`.
+    pub file: Option<String>,
+}
+
+/// Crea un server da un modpack (Modrinth o file `.mrpack`): loader,
+/// versioni e mod lato server vengono dal pack.
+#[tauri::command]
+pub async fn server_create_modpack(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    input: ModpackServerInput,
+) -> CmdResult<ServerInfoView> {
+    let installer = state.installer();
+    let name = input.name.trim().to_owned();
+    // Il pack da Modrinth si scarica (verificato) e poi si cancella.
+    let (pack, downloaded) = match (&input.project, &input.file) {
+        (Some(project), _) => (
+            hyper_content::mrpack::download_from_modrinth(
+                &state.modrinth,
+                installer.downloader(),
+                &state.paths.cache_dir(),
+                project,
+            )
+            .await
+            .cmd()?,
+            true,
+        ),
+        (None, Some(file)) => (std::path::PathBuf::from(file), false),
+        (None, None) => return Err("Scegli un modpack.".into()),
+    };
+    let pack_name = hyper_content::mrpack::read_index(&pack)
+        .map(|i| i.name)
+        .unwrap_or_else(|_| name.clone());
+    let request = NewServer {
+        name: name.clone(),
+        kind: ServerKind::Vanilla,
+        version: String::new(),
+        memory_mb: input.memory_mb,
+        port: input.port,
+        keep_running: input.keep_running,
+        autostart: input.autostart,
+        eula: input.eula,
+        loader_version: None,
+    };
+    let report = |stage: CreateStage, done: usize, total: usize| {
+        let _ = app.emit(
+            "server-progress",
+            ServerProgress {
+                name: &name,
+                stage: stage.as_str(),
+                done,
+                total,
+            },
+        );
+    };
+    let source = hyper_server::config::ModpackSource {
+        name: pack_name,
+        project: input.project.clone(),
+    };
+    let result = install::create_from_modpack(
+        &installer,
+        &manager(&state),
+        &request,
+        &pack,
+        source,
+        Some(&report),
+    )
+    .await;
+    if downloaded {
+        let _ = std::fs::remove_file(&pack);
+    }
+    let config = result.cmd()?;
     sync_autostart(&state);
     info(&state, config).await
 }
@@ -308,6 +443,35 @@ pub async fn server_stats(state: State<'_, AppState>, name: String) -> CmdResult
         mem_max_mb: config.memory_mb,
         online: stats.online,
     })
+}
+
+/// Salva gli automatismi (riavvio giornaliero, backup automatici); li
+/// applica l'host anche a launcher chiuso.
+#[tauri::command]
+pub async fn server_set_schedule(
+    state: State<'_, AppState>,
+    name: String,
+    schedule: hyper_server::config::Schedule,
+) -> CmdResult<ServerInfoView> {
+    if let Some(at) = &schedule.restart_at
+        && hyper_server::schedule::parse_time(at).is_none()
+    {
+        return Err("Ora del riavvio non valida (usa HH:MM).".into());
+    }
+    if schedule
+        .backup_hours
+        .is_some_and(|h| !(1..=168).contains(&h))
+    {
+        return Err("I backup automatici vanno da ogni ora a ogni settimana.".into());
+    }
+    if !(1..=100).contains(&schedule.keep_backups) {
+        return Err("Si possono tenere da 1 a 100 backup.".into());
+    }
+    let manager = manager(&state);
+    let mut config = manager.load(&name).cmd()?;
+    config.schedule = schedule;
+    manager.save(&config).cmd()?;
+    info(&state, config).await
 }
 
 /// Imposta (PNG 64×64 in base64, già ridimensionato dall'interfaccia) o
@@ -460,15 +624,17 @@ pub async fn server_delete_file(
         .cmd()
 }
 
-/// Cartella e versione di Minecraft di un server Paper (i plugin non
-/// esistono su Vanilla).
-fn paper_server(state: &AppState, name: &str) -> CmdResult<(std::path::PathBuf, String)> {
+/// Cartella dei contenuti (`plugins/` per Paper, `mods/` per i server con
+/// loader), loader Modrinth e versione di Minecraft di un server.
+fn content_target(
+    state: &AppState,
+    name: &str,
+) -> CmdResult<(std::path::PathBuf, &'static [&'static str], String)> {
     let manager = manager(state);
     let config = manager.load(name).cmd()?;
-    if config.kind != ServerKind::Paper {
-        return Err("I plugin funzionano solo sui server Paper.".into());
-    }
-    Ok((manager.dir(name).cmd()?, config.version))
+    let (dir, loaders) = plugins::target(&manager.dir(name).cmd()?, config.kind)
+        .ok_or_else(|| "I server Vanilla non hanno né plugin né mod.".to_owned())?;
+    Ok((dir, loaders, config.version))
 }
 
 #[tauri::command]
@@ -476,7 +642,7 @@ pub async fn server_plugins(
     state: State<'_, AppState>,
     name: String,
 ) -> CmdResult<Vec<plugins::InstalledPlugin>> {
-    let (dir, _) = paper_server(&state, &name)?;
+    let (dir, _, _) = content_target(&state, &name)?;
     plugins::installed(&state.modrinth, &dir).await.cmd()
 }
 
@@ -488,12 +654,13 @@ pub async fn server_plugin_install(
     name: String,
     project: String,
 ) -> CmdResult<Vec<String>> {
-    let (dir, version) = paper_server(&state, &name)?;
+    let (dir, loaders, version) = content_target(&state, &name)?;
     let installer = state.installer();
     plugins::install(
         &state.modrinth,
         installer.downloader(),
         &dir,
+        loaders,
         &project,
         &version,
     )
@@ -504,7 +671,7 @@ pub async fn server_plugin_install(
 /// A server acceso Windows tiene aperti i jar: si possono toccare solo da spento.
 async fn plugins_unlocked(state: &AppState, name: &str) -> CmdResult<()> {
     if is_running(state, name).await {
-        return Err("Ferma il server per attivare, disattivare o eliminare i plugin.".into());
+        return Err("Ferma il server per attivare, disattivare o eliminare plugin e mod.".into());
     }
     Ok(())
 }
@@ -516,7 +683,7 @@ pub async fn server_plugin_set_enabled(
     file: String,
     enabled: bool,
 ) -> CmdResult<String> {
-    let (dir, _) = paper_server(&state, &name)?;
+    let (dir, _, _) = content_target(&state, &name)?;
     plugins_unlocked(&state, &name).await?;
     plugins::set_enabled(&dir, &file, enabled).cmd()
 }
@@ -527,9 +694,115 @@ pub async fn server_plugin_delete(
     name: String,
     file: String,
 ) -> CmdResult<()> {
-    let (dir, _) = paper_server(&state, &name)?;
+    let (dir, _, _) = content_target(&state, &name)?;
     plugins_unlocked(&state, &name).await?;
     plugins::remove(&dir, &file).cmd()
+}
+
+/// Se il server si è fermato con un errore, la causa probabile (dalla
+/// console tenuta dall'host); `None` se è acceso o si è fermato bene.
+#[tauri::command]
+pub async fn server_crash(
+    state: State<'_, AppState>,
+    name: String,
+) -> CmdResult<Option<hyper_instances::crash::CrashInfo>> {
+    let Ok(chunk) = client(&state).console(&name, 0).await else {
+        return Ok(None);
+    };
+    let last = chunk.lines.last().map(String::as_str).unwrap_or_default();
+    // Ultima riga "[Hyper Launcher] Server fermato (codice N)".
+    if !last.starts_with("[Hyper Launcher] Server fermato") {
+        return Ok(None);
+    }
+    let failed = !last.ends_with("(codice 0)") && last.contains("(codice");
+    let found = hyper_instances::crash::analyze_text(&chunk.lines.join("\n"));
+    // Con codice 0 il server si è chiuso "bene", ma una porta occupata o
+    // l'EULA lo fermano proprio così: quelle si segnalano lo stesso.
+    let fatal_anyway = found
+        .as_ref()
+        .is_some_and(|c| c.title == "Porta già in uso" || c.title == "EULA non accettata");
+    if !failed && !fatal_anyway {
+        return Ok(None);
+    }
+    Ok(Some(found.unwrap_or_else(|| {
+        hyper_instances::crash::CrashInfo {
+            title: "Il server si è fermato con un errore".to_owned(),
+            cause: chunk
+                .lines
+                .iter()
+                .rev()
+                .find(|l| l.contains("ERROR") || l.contains("Exception"))
+                .cloned(),
+            hint: "Guarda le ultime righe della console: di solito indicano la mod o il plugin coinvolto.".to_owned(),
+            file: None,
+        }
+    })))
+}
+
+// ---------- Gioca e invito ----------
+
+/// Cosa serve per entrare in un server dal launcher: l'istanza da avviare e
+/// l'indirizzo per Quick Play.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayTarget {
+    pub instance: String,
+    pub join: String,
+}
+
+/// Istanza per giocare nel server: quella collegata se esiste ancora,
+/// altrimenti ne crea una con la stessa versione e lo stesso loader (per un
+/// server da modpack importa lo stesso modpack, con le mod lato client).
+#[tauri::command]
+pub async fn server_play(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    name: String,
+) -> CmdResult<PlayTarget> {
+    let manager = manager(&state);
+    let mut config = manager.load(&name).cmd()?;
+    let instances = state.instances();
+    let join = format!("localhost:{}", config.port);
+    if let Some(existing) = config
+        .instance
+        .as_ref()
+        .filter(|i| instances.load(i).is_ok())
+    {
+        return Ok(PlayTarget {
+            instance: existing.clone(),
+            join,
+        });
+    }
+    let pack = manager
+        .dir(&name)
+        .cmd()?
+        .join(hyper_server::config::MODPACK_COPY);
+    let instance = if config.modpack.is_some() && pack.is_file() {
+        let report = crate::content::progress_emitter(&app, "");
+        hyper_content::mrpack::import(
+            &instances,
+            state.installer().downloader(),
+            &pack,
+            Some(&report),
+        )
+        .await
+        .cmd()?
+    } else {
+        let loader = config
+            .kind
+            .loader()
+            .zip(config.loader_version.clone())
+            .map(|(kind, version)| hyper_installer::LoaderSpec { kind, version });
+        let base = format!("{name} (server)");
+        let unique = instances.unique_name(&base).cmd()?;
+        instances.create(&unique, &config.version, loader).cmd()?
+    };
+    config.instance = Some(instance.config.name.clone());
+    manager.save(&config).cmd()?;
+    Ok(PlayTarget {
+        instance: instance.config.name,
+        join,
+    })
 }
 
 // ---------- Accesso da internet (playit.gg) ----------

@@ -20,7 +20,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::process::{ChildStdin, Command};
 use tokio::sync::Notify;
 
-use crate::config::{JAR, ServerManager};
+use crate::config::ServerManager;
 use crate::players::join_or_leave;
 use crate::properties::Properties;
 use crate::protocol::{
@@ -36,6 +36,10 @@ const SAMPLE_EVERY: Duration = Duration::from_secs(2);
 const IDLE_EXIT: Duration = Duration::from_secs(60);
 /// Dopo `stop`, il server viene terminato se non si chiude entro questo tempo.
 const STOP_GRACE: Duration = Duration::from_secs(30);
+/// Attesa massima di "Saved the game" prima di un backup a server acceso.
+const SAVE_WAIT: Duration = Duration::from_secs(60);
+/// Ogni quanto si controllano gli automatismi.
+const SCHEDULE_EVERY: Duration = Duration::from_secs(20);
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
@@ -55,6 +59,11 @@ impl Console {
             self.lines.pop_front();
             self.first += 1;
         }
+    }
+
+    /// Numero della prossima riga.
+    pub fn end(&self) -> u64 {
+        self.first + self.lines.len() as u64
     }
 
     /// Righe dalla numero `since` (o dalla più vecchia ancora tenuta).
@@ -88,6 +97,10 @@ struct Host {
     last_activity: Mutex<Instant>,
     /// Agent playit (uno per tutti i server con tunnel).
     agent: Mutex<Option<tokio::process::Child>>,
+    /// Stato del riavvio giornaliero di ogni server.
+    restarts: Mutex<HashMap<String, crate::schedule::RestartState>>,
+    /// Server con un backup o un riavvio automatico in corso.
+    auto_jobs: Mutex<HashSet<String>>,
 }
 
 impl Host {
@@ -120,7 +133,7 @@ impl Host {
         command
             .arg(format!("-Xms{}M", config.memory_mb.min(1024)))
             .arg(format!("-Xmx{}M", config.memory_mb))
-            .args(["-jar", JAR, "nogui"])
+            .args(&config.launch)
             .current_dir(&dir)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
@@ -310,7 +323,132 @@ impl Host {
                 }
                 Ok(serde_json::Value::Null)
             }
+            Op::Backup { name, auto } => Ok(serde_json::to_value(self.backup(&name, auto).await?)?),
         }
+    }
+
+    /// Automatismi dei server accesi: avvisi e riavvio giornaliero, backup
+    /// ogni N ore. Le operazioni lunghe girano a parte, una per server.
+    async fn tick_schedule(host: &Arc<Self>) {
+        let running: Vec<(String, u64)> = lock(&host.servers)
+            .iter()
+            .filter(|(_, r)| !r.exited.load(Ordering::Relaxed))
+            .map(|(n, r)| (n.clone(), r.started))
+            .collect();
+        let now = chrono::Local::now().naive_local();
+        for (name, started) in running {
+            let Ok(config) = host.manager.load(&name) else {
+                continue;
+            };
+            if lock(&host.auto_jobs).contains(&name) {
+                continue;
+            }
+            let restart = config
+                .schedule
+                .restart_at
+                .as_deref()
+                .and_then(crate::schedule::parse_time)
+                .and_then(|at| {
+                    let mut restarts = lock(&host.restarts);
+                    crate::schedule::restart_action(
+                        at,
+                        now,
+                        restarts.entry(name.clone()).or_default(),
+                    )
+                });
+            match restart {
+                Some(crate::schedule::RestartAction::Warn(minutes)) => {
+                    let text = if minutes == 1 {
+                        "say Il server si riavvia tra 1 minuto.".to_owned()
+                    } else {
+                        format!("say Il server si riavvia tra {minutes} minuti.")
+                    };
+                    let _ = host.command(&name, &text).await;
+                }
+                Some(crate::schedule::RestartAction::Restart) => {
+                    lock(&host.auto_jobs).insert(name.clone());
+                    let host = host.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = host.restart(&name).await {
+                            tracing::warn!(server = name, error = %e, "scheduled restart failed");
+                        }
+                        lock(&host.auto_jobs).remove(&name);
+                    });
+                    continue;
+                }
+                None => {}
+            }
+            if let Some(hours) = config.schedule.backup_hours {
+                let last = crate::backup::list(&host.paths, &name)
+                    .ok()
+                    .and_then(|l| l.first().map(|b| b.created));
+                if crate::schedule::backup_due(hours, last, started, hyper_core::unix_now()) {
+                    lock(&host.auto_jobs).insert(name.clone());
+                    let host = host.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = host.backup(&name, true).await {
+                            tracing::warn!(server = name, error = %e, "scheduled backup failed");
+                        }
+                        lock(&host.auto_jobs).remove(&name);
+                    });
+                }
+            }
+        }
+    }
+
+    /// Riavvio: `stop`, attesa della chiusura (al massimo 45 s, poi il
+    /// server viene terminato), di nuovo acceso.
+    async fn restart(&self, name: &str) -> Result<()> {
+        let _ = self.command(name, "say Riavvio in corso…").await;
+        self.stop(name).await?;
+        let exited = self.running_field(name, |r| r.exited.clone())?;
+        let started = Instant::now();
+        while !exited.load(Ordering::Relaxed)
+            && started.elapsed() < STOP_GRACE + Duration::from_secs(15)
+        {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+        self.start(name)
+    }
+
+    /// Backup del mondo. A server acceso si sospende il salvataggio
+    /// automatico, si scrive tutto su disco e si riattiva alla fine, anche se
+    /// lo zip non riesce: così i file non cambiano mentre si copiano.
+    async fn backup(&self, name: &str, auto: bool) -> Result<hyper_installer::backups::BackupInfo> {
+        let console = self
+            .running_field(name, |r| {
+                (!r.exited.load(Ordering::Relaxed)).then(|| r.console.clone())
+            })
+            .ok()
+            .flatten();
+        let (manager, paths, owned) = (self.manager.clone(), self.paths.clone(), name.to_owned());
+        let zip = move || crate::backup::create_now(&manager, &paths, &owned, auto);
+        let Some(console) = console else {
+            return tokio::task::spawn_blocking(zip)
+                .await
+                .map_err(|e| ServerError::Invalid(e.to_string()))?;
+        };
+        let from = lock(&console).end();
+        self.command(name, "save-off").await?;
+        self.command(name, "save-all flush").await?;
+        // "Saved the game" arriva quando i chunk sono su disco.
+        let started = Instant::now();
+        while started.elapsed() < SAVE_WAIT {
+            if lock(&console)
+                .since(from)
+                .lines
+                .iter()
+                .any(|l| l.contains("Saved the game"))
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(300)).await;
+        }
+        let result = tokio::task::spawn_blocking(zip)
+            .await
+            .map_err(|e| ServerError::Invalid(e.to_string()));
+        let _ = self.command(name, "save-on").await;
+        result?
     }
 
     /// Campiona CPU, RAM, giocatori e latenza di ogni server acceso.
@@ -476,6 +614,8 @@ pub async fn run(paths: Paths, autostart: bool) -> Result<()> {
         servers: Mutex::new(HashMap::new()),
         last_activity: Mutex::new(Instant::now()),
         agent: Mutex::new(None),
+        restarts: Mutex::new(HashMap::new()),
+        auto_jobs: Mutex::new(HashSet::new()),
     });
     if autostart {
         for config in host
@@ -496,6 +636,16 @@ pub async fn run(paths: Paths, autostart: bool) -> Result<()> {
             loop {
                 tokio::time::sleep(SAMPLE_EVERY).await;
                 host.sample(&mut system).await;
+            }
+        });
+    }
+    {
+        // Automatismi (riavvio giornaliero, backup): un controllo ogni 20 s.
+        let host = host.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(SCHEDULE_EVERY).await;
+                Host::tick_schedule(&host).await;
             }
         });
     }

@@ -3,6 +3,7 @@
 //! in parallelo nella cache condivisa e verificati con SHA1 prima dell'uso.
 
 pub mod assets;
+pub mod backups;
 pub mod download;
 mod error;
 pub mod hash;

@@ -4,6 +4,7 @@
 
 pub mod console;
 mod content;
+pub mod crash;
 mod launch;
 mod prepare;
 pub mod servers;
@@ -16,7 +17,9 @@ use hyper_installer::LoaderSpec;
 use serde::{Deserialize, Serialize};
 
 pub use content::{ContentDir, ContentFile, DISABLED, World};
-pub use launch::{GameWindow, LaunchCommand, LaunchOptions, build_command, prepare_natives};
+pub use launch::{
+    GameWindow, LaunchCommand, LaunchOptions, build_command, join_args, prepare_natives,
+};
 pub use prepare::{PreparedLaunch, RunningGame, install, prepare_launch, resolve_java};
 
 pub use hyper_core::MIN_MEMORY_MB;

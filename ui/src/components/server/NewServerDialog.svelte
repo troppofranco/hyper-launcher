@@ -1,7 +1,7 @@
 <script lang="ts">
   // Creazione guidata di un server in tre passi: tipo e versione, risorse,
   // EULA di Mojang. Durante la creazione mostra l'avanzamento del download.
-  import { api, on, type ServerInfo, type ServerKind, type ServerProgressEvent } from '../../lib/api';
+  import { api, on, type SearchHit, type ServerInfo, type ServerKind, type ServerProgressEvent } from '../../lib/api';
   import { app } from '../../lib/store.svelte';
   import { t } from '../../lib/i18n.svelte';
   import Modal from '../Modal.svelte';
@@ -15,10 +15,17 @@
   let { existing, onclose }: { existing: ServerInfo[]; onclose: () => void } = $props();
 
   const STEPS = ['Tipo', 'Risorse', 'EULA'] as const;
-  const KINDS: [ServerKind, string, string][] = [
+  /** Un tipo di server oppure "da modpack" (tipo e versioni li dà il pack). */
+  type Choice = ServerKind | 'modpack';
+  const KINDS: [Choice, string, string][] = [
     ['vanilla', 'Vanilla', 'Il server ufficiale di Mojang, senza aggiunte.'],
     ['paper', 'Paper', 'plugin Bukkit/Spigot, prestazioni migliori'],
+    ['fabric', 'Fabric', 'mod leggere e moderne'],
+    ['neoforge', 'NeoForge', 'grandi mod moderne'],
+    ['forge', 'Forge', 'mod e modpack classici'],
+    ['modpack', 'Da modpack', 'le stesse mod dei tuoi amici'],
   ];
+  const LABELS: Record<Choice, string> = { vanilla: 'Vanilla', paper: 'Paper', fabric: 'Fabric', neoforge: 'NeoForge', forge: 'Forge', modpack: 'Modpack' };
   const STAGES: Record<ServerProgressEvent['stage'], string> = {
     download: 'Download del server',
     java: 'Download di Java',
@@ -36,9 +43,17 @@
 
   let step = $state(0);
   let dir = $state(1);
-  let kind = $state<ServerKind>('paper');
+  let kind = $state<Choice>('paper');
   let versions = $state<string[] | null>(null);
   let version = $state('');
+  // Loader (Fabric, NeoForge, Forge): versioni per la versione del gioco.
+  const loaderKind = $derived(kind === 'fabric' || kind === 'neoforge' || kind === 'forge' ? kind : null);
+  let loaderVersions = $state<string[] | null>(null);
+  let loaderVersion = $state('');
+  // Modpack: cercato su Modrinth oppure un file .mrpack dal PC.
+  let packQuery = $state('');
+  let packHits = $state<SearchHit[] | null>(null);
+  let pack = $state<{ project: string | null; file: string | null; name: string; detail: string } | null>(null);
   // Valori iniziali presi una volta sola dall'elenco aperto: chi crea un
   // server nel frattempo non cambia ciò che l'utente sta scrivendo.
   let name = $state(defaultName());
@@ -60,17 +75,60 @@
   );
   const portClash = $derived(existing.find((s) => s.port === port) ?? null);
   const portOk = $derived(Number.isInteger(port) && port >= 1024 && port <= 65535);
-  const canNext = $derived(step === 0 ? !nameError && !!version : step === 1 ? portOk && !portClash : eula);
+  const typeReady = $derived(kind === 'modpack' ? !!pack : !!version && (!loaderKind || !!loaderVersion));
+  const canNext = $derived(step === 0 ? !nameError && typeReady : step === 1 ? portOk && !portClash : eula);
+  /** "Fabric 1.21.4 · 0.16.10", "Paper 1.21.4", "Cobblemon (modpack)". */
+  const summary = $derived(kind === 'modpack'
+    ? `${pack?.name ?? ''}${pack?.detail ? ` · ${pack.detail}` : ''}`
+    : `${LABELS[kind]} ${version}${loaderVersion && loaderKind ? ` · ${loaderVersion}` : ''}`);
 
   // Versioni del tipo scelto (si parte dalla più recente).
   $effect(() => {
     const k = kind;
     versions = null;
     version = '';
+    if (k === 'modpack') return;
     api.serverVersions(k)
       .then((list) => { if (k === kind) { versions = list; version = list[0] ?? ''; } })
       .catch((e) => { versions = []; error = t(String(e)); });
   });
+
+  // Versioni del loader per la versione del gioco scelta.
+  $effect(() => {
+    const [l, v] = [loaderKind, version];
+    loaderVersions = null;
+    loaderVersion = '';
+    if (!l || !v) return;
+    api.loaderVersions(l, v)
+      .then((list) => { if (l === loaderKind && v === version) { loaderVersions = list; loaderVersion = list[0] ?? ''; } })
+      .catch((e) => { loaderVersions = []; error = t(String(e)); });
+  });
+
+  // Modpack su Modrinth (i più scaricati finché non si scrive).
+  $effect(() => {
+    if (kind !== 'modpack') return;
+    const text = packQuery;
+    const timer = setTimeout(() => {
+      api.search({ text, kind: 'modpack', instance: null, gameVersion: null, loaders: ['fabric', 'neoforge', 'forge'], categories: [], sort: text.trim() ? 'relevance' : 'downloads', offset: 0, serverSide: true })
+        .then((r) => { if (text === packQuery) packHits = r.hits.slice(0, 6); })
+        .catch((e) => app.error(e));
+    }, text ? 300 : 0);
+    return () => clearTimeout(timer);
+  });
+
+  // Più memoria per le mod.
+  $effect(() => {
+    memoryGb = kind === 'modpack' ? 6 : loaderKind ? 5 : 4;
+  });
+
+  async function pickFile() {
+    try {
+      const p = await api.serverPickModpack();
+      if (p) pack = { project: null, file: p.path, name: p.name, detail: `${p.loader ?? 'Vanilla'} · Minecraft ${p.game}` };
+    } catch (e) {
+      app.error(e);
+    }
+  }
 
   // Senza "resta acceso" non può partire con il computer.
   $effect(() => {
@@ -100,7 +158,10 @@
     error = null;
     progress = null;
     try {
-      const s = await api.serverCreate({ name: trimmed, kind, version, memoryMb: memoryGb * 1024, port, keepRunning, autostart, eula });
+      const common = { name: trimmed, memoryMb: memoryGb * 1024, port, keepRunning, autostart, eula };
+      const s = kind === 'modpack'
+        ? await api.serverCreateModpack({ ...common, project: pack?.project ?? null, file: pack?.file ?? null })
+        : await api.serverCreate({ ...common, kind, version, loaderVersion: loaderKind ? loaderVersion : null });
       app.info_(t('Server “{nome}” creato.', { nome: s.name }));
       creating = false;
       onclose();
@@ -119,7 +180,7 @@
   }
 </script>
 
-<Modal title={t('Nuovo server')} onclose={close} width={600}>
+<Modal title={t('Nuovo server')} onclose={close} width={700}>
   <form class="wizard" onsubmit={submit}>
     <div class="progress-head">
       <div class="steps" aria-hidden="true">
@@ -142,22 +203,54 @@
               {/each}
             </div>
           </fieldset>
-          <label class="field">{t('Versione di Minecraft')}
-            <select class="input" bind:value={version} disabled={!versions?.length}>
-              {#if versions === null}<option value="">{t('Caricamento…')}</option>{:else if !versions.length}<option value="">{t('Nessuna versione disponibile')}</option>{/if}
-              {#each versions ?? [] as v, i (v)}<option value={v}>{v}{i === 0 ? t(' (ultima)') : ''}</option>{/each}
-            </select>
-          </label>
+          {#if kind === 'modpack'}
+            <div class="pack">
+              <div class="pack-tools">
+                <input class="input grow" type="search" bind:value={packQuery} placeholder={t('Cerca un modpack su Modrinth…')} aria-label={t('Cerca un modpack')} />
+                <button type="button" class="btn" onclick={pickFile}>{t('Scegli file .mrpack')}</button>
+              </div>
+              {#if pack?.file}
+                <div class="pack-item on"><span class="strong">{pack.name}</span><span class="muted small">{pack.detail}</span></div>
+              {/if}
+              <div class="pack-list">
+                {#each packHits ?? [] as h (h.id)}
+                  <button type="button" class="pack-item" class:on={pack?.project === h.id} aria-pressed={pack?.project === h.id} onclick={() => (pack = { project: h.id, file: null, name: h.title, detail: t('da Modrinth') })}>
+                    <span class="strong">{h.title}</span><span class="muted small">{h.description}</span>
+                  </button>
+                {:else}
+                  <span class="muted small">{packHits === null ? t('Caricamento…') : t('Nessun modpack trovato.')}</span>
+                {/each}
+              </div>
+              <span class="hint">{t('Loader, versione e mod li prende dal modpack (solo quelle che servono al server).')}</span>
+            </div>
+          {:else}
+            <div class="versions" class:two={!!loaderKind}>
+              <label class="field">{t('Versione di Minecraft')}
+                <select class="input" bind:value={version} disabled={!versions?.length}>
+                  {#if versions === null}<option value="">{t('Caricamento…')}</option>{:else if !versions.length}<option value="">{t('Nessuna versione disponibile')}</option>{/if}
+                  {#each versions ?? [] as v, i (v)}<option value={v}>{v}{i === 0 ? t(' (ultima)') : ''}</option>{/each}
+                </select>
+              </label>
+              {#if loaderKind}
+                <label class="field">{t('Versione di {loader}', { loader: LABELS[kind] })}
+                  <select class="input" bind:value={loaderVersion} disabled={!loaderVersions?.length}>
+                    {#if loaderVersions === null}<option value="">{t('Caricamento…')}</option>{:else if !loaderVersions.length}<option value="">{t('Nessuna versione per questo Minecraft')}</option>{/if}
+                    {#each loaderVersions ?? [] as v, i (v)}<option value={v}>{v}{i === 0 ? t(' (consigliata)') : ''}</option>{/each}
+                  </select>
+                </label>
+              {/if}
+            </div>
+          {/if}
           <label class="field">{t('Nome')}
             <input class="input" bind:value={name} maxlength="32" autocomplete="off" aria-invalid={!!nameError} />
             {#if nameError}<span class="warn">{nameError}</span>{:else}<span class="hint">{t('Lettere, numeri, spazi, - e _ (massimo 32).')}</span>{/if}
           </label>
         {:else if step === 1}
           <div class="summary">
-            <span class="letter">{kind === 'paper' ? 'P' : 'V'}</span>
+            <span class="letter">{LABELS[kind][0]}</span>
             <span class="kind-text">
-              <span class="strong">{kind === 'paper' ? 'Paper' : 'Vanilla'} {version}</span>
-              <span class="muted small">{trimmed}{kind === 'paper' ? ` · ${t('plugin Bukkit/Spigot')}` : ''}</span>
+              <span class="strong">{summary}</span>
+              <span class="muted small">{trimmed}</span>
             </span>
           </div>
           <label class="field">
@@ -217,7 +310,17 @@
   .pane { display: flex; flex-direction: column; gap: 16px; min-height: 300px; }
   fieldset { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
   legend { font-weight: 600; font-size: 13px; margin-bottom: 8px; }
-  .kinds { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .kinds { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .versions { display: grid; grid-template-columns: 1fr; gap: 12px; }
+  .versions.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pack { display: flex; flex-direction: column; gap: 10px; }
+  .pack-tools { display: flex; gap: 10px; }
+  .grow { flex: 1; min-width: 0; }
+  .pack-list { display: flex; flex-direction: column; gap: 6px; max-height: 170px; overflow-y: auto; }
+  .pack-item { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 9px 12px; text-align: left; border-radius: var(--radius-sm); border: 1px solid var(--line); background: var(--panel); }
+  .pack-item .small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+  .pack-item:hover { border-color: var(--accent-line); }
+  .pack-item.on { border-color: var(--accent-line); background: var(--accent-soft); }
   .kind { display: flex; align-items: center; gap: 12px; padding: 12px; text-align: left; border-radius: var(--radius-sm); border: 1px solid var(--line-strong); background: var(--panel); transition: border-color .18s ease, background .18s ease, transform .12s ease; }
   .kind:hover { border-color: var(--accent-line); }
   .kind:active { transform: scale(.98); }

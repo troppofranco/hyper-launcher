@@ -18,11 +18,18 @@ pub enum ServerCommand {
     /// Minecraft: https://aka.ms/MinecraftEULA
     Create {
         name: String,
-        /// vanilla o paper.
+        /// vanilla, paper, fabric, neoforge o forge.
         #[arg(long, default_value = "paper")]
         kind: String,
-        #[arg(long)]
+        /// Versione di Minecraft (non serve con --modpack).
+        #[arg(long, default_value = "")]
         version: String,
+        /// Versione del loader (predefinita: l'ultima).
+        #[arg(long)]
+        loader: Option<String>,
+        /// Crea il server da un modpack: progetto Modrinth o file .mrpack.
+        #[arg(long)]
+        modpack: Option<String>,
         #[arg(long, default_value_t = 4096)]
         memory: u32,
         #[arg(long, default_value_t = 25565)]
@@ -154,6 +161,8 @@ pub async fn server(app: &App, cmd: ServerCommand) -> Result<()> {
             name,
             kind,
             version,
+            loader,
+            modpack,
             memory,
             port,
             accept_eula,
@@ -166,7 +175,10 @@ pub async fn server(app: &App, cmd: ServerCommand) -> Result<()> {
             let kind = match kind.as_str() {
                 "vanilla" => ServerKind::Vanilla,
                 "paper" => ServerKind::Paper,
-                other => bail!("tipo di server sconosciuto: {other} (vanilla o paper)"),
+                "fabric" => ServerKind::Fabric,
+                "neoforge" => ServerKind::NeoForge,
+                "forge" => ServerKind::Forge,
+                other => bail!("tipo di server sconosciuto: {other}"),
             };
             let installer = app.installer()?;
             let report = |stage: install::CreateStage, done: usize, total: usize| {
@@ -182,8 +194,45 @@ pub async fn server(app: &App, cmd: ServerCommand) -> Result<()> {
                 keep_running: false,
                 autostart: false,
                 eula: true,
+                loader_version: loader,
             };
-            let config = install::create(&installer, &manager, &request, Some(&report)).await?;
+            let config = match modpack {
+                None => install::create(&installer, &manager, &request, Some(&report)).await?,
+                Some(pack) => {
+                    let file = std::path::Path::new(&pack);
+                    let (path, project) = if file.is_file() {
+                        (file.to_owned(), None)
+                    } else {
+                        let api = hyper_content::Modrinth::new()?;
+                        let path = hyper_content::mrpack::download_from_modrinth(
+                            &api,
+                            installer.downloader(),
+                            &app.paths.cache_dir(),
+                            &pack,
+                        )
+                        .await?;
+                        (path, Some(pack.clone()))
+                    };
+                    let name = hyper_content::mrpack::read_index(&path)?.name;
+                    let source = hyper_server::config::ModpackSource {
+                        name,
+                        project: project.clone(),
+                    };
+                    let result = install::create_from_modpack(
+                        &installer,
+                        &manager,
+                        &request,
+                        &path,
+                        source,
+                        Some(&report),
+                    )
+                    .await;
+                    if project.is_some() {
+                        let _ = std::fs::remove_file(&path);
+                    }
+                    result?
+                }
+            };
             eprintln!();
             println!(
                 "Server {:?} creato in {}",

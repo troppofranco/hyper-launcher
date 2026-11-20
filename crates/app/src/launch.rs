@@ -38,6 +38,8 @@ struct StateEvent<'a> {
     state: &'static str,
     error: Option<String>,
     exit_code: Option<i32>,
+    /// Analisi del crash, se il gioco si è chiuso con un errore.
+    crash: Option<hyper_instances::crash::CrashInfo>,
 }
 
 fn emit_state(app: &AppHandle, instance: &str, state: &'static str) {
@@ -48,23 +50,30 @@ fn emit_state(app: &AppHandle, instance: &str, state: &'static str) {
             state,
             error: None,
             exit_code: None,
+            crash: None,
         },
     );
 }
 
 /// Avvia l'istanza in background e ritorna subito; l'esito arriva con gli
 /// eventi `instance-state`.
+/// Con `join` ("host:porta") il gioco entra subito in quel server.
 #[tauri::command]
-pub fn launch_instance(app: AppHandle, state: State<'_, AppState>, name: String) -> CmdResult<()> {
+pub fn launch_instance(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    name: String,
+    join: Option<String>,
+) -> CmdResult<()> {
     if !state.try_mark_busy(&name) {
         return Err("L'istanza è già in avvio o in gioco.".into());
     }
     emit_state(&app, &name, "installing");
     tauri::async_runtime::spawn(async move {
-        let result = run(&app, &name).await;
-        let (error, exit_code) = match result {
-            Ok(code) => (None, code),
-            Err(e) => (Some(format!("{e:#}")), None),
+        let result = run(&app, &name, join.as_deref()).await;
+        let (error, exit_code, crash) = match result {
+            Ok((code, crash)) => (None, code, crash),
+            Err(e) => (Some(format!("{e:#}")), None, None),
         };
         app.state::<AppState>().clear_busy(&name);
         let _ = app.emit(
@@ -74,6 +83,7 @@ pub fn launch_instance(app: AppHandle, state: State<'_, AppState>, name: String)
                 state: "stopped",
                 error,
                 exit_code,
+                crash,
             },
         );
         restore_window(&app);
@@ -81,7 +91,13 @@ pub fn launch_instance(app: AppHandle, state: State<'_, AppState>, name: String)
     Ok(())
 }
 
-async fn run(app: &AppHandle, name: &str) -> anyhow::Result<Option<i32>> {
+/// Codice di uscita del gioco e, se si è chiuso con un errore, l'analisi
+/// del crash.
+async fn run(
+    app: &AppHandle,
+    name: &str,
+    join: Option<&str>,
+) -> anyhow::Result<(Option<i32>, Option<hyper_instances::crash::CrashInfo>)> {
     let state = app.state::<AppState>();
     let config = state.config();
 
@@ -129,6 +145,21 @@ async fn run(app: &AppHandle, name: &str) -> anyhow::Result<Option<i32>> {
     .await?;
 
     prepared.command.hide_console = !config.show_console;
+    if let Some((host, port)) = join.and_then(|j| j.rsplit_once(':')) {
+        // La schermata di benvenuto del primo avvio bloccherebbe l'ingresso.
+        if let Err(e) = instance.skip_onboarding() {
+            tracing::warn!(error = %e, "cannot skip the onboarding screen");
+        }
+        let port: u16 = port
+            .parse()
+            .map_err(|_| anyhow::anyhow!("Porta non valida: {port}"))?;
+        prepared.command.args.extend(hyper_instances::join_args(
+            &instance.config.version,
+            host,
+            port,
+        ));
+    }
+    let started = hyper_core::unix_now();
     let game = prepared.spawn()?;
     emit_state(app, name, "running");
     if config.minimize_on_launch
@@ -150,5 +181,9 @@ async fn run(app: &AppHandle, name: &str) -> anyhow::Result<Option<i32>> {
         })
     })
     .await??;
-    Ok(status.code())
+    let code = status.code();
+    // Chiusura con errore: si cerca la causa nel crash report o nel log.
+    let crash = (!status.success())
+        .then(|| hyper_instances::crash::analyze_game(&instance.game_dir(), started));
+    Ok((code, crash))
 }

@@ -1,4 +1,4 @@
-//! Plugin dei server Paper da Modrinth: ricerca della versione compatibile,
+//! Plugin (Paper) e mod (Fabric, NeoForge, Forge) dei server da Modrinth: ricerca della versione compatibile,
 //! dipendenze obbligatorie, download verificati con SHA1 nella cartella
 //! `plugins/`, riconoscimento dei jar installati tramite il loro hash.
 //!
@@ -17,15 +17,28 @@ use serde::Serialize;
 
 use crate::{Result, ServerError};
 
-/// Cartella dei plugin dentro quella del server.
-pub const DIR: &str = "plugins";
+/// Cartella e loader Modrinth dei contenuti di un server: i plugin per
+/// Paper, le mod per i server con loader (niente per Vanilla).
+pub fn target(
+    server_dir: &Path,
+    kind: crate::ServerKind,
+) -> Option<(PathBuf, &'static [&'static str])> {
+    use crate::ServerKind;
+    let (folder, loaders): (&str, &'static [&'static str]) = match kind {
+        ServerKind::Vanilla => return None,
+        ServerKind::Paper => (
+            "plugins",
+            ContentKind::Plugin.loaders(None).unwrap_or_default(),
+        ),
+        ServerKind::Fabric => ("mods", &["fabric"]),
+        ServerKind::NeoForge => ("mods", &["neoforge"]),
+        ServerKind::Forge => ("mods", &["forge"]),
+    };
+    Some((server_dir.join(folder), loaders))
+}
 const DISABLED: &str = ".disabled";
 /// Limite di sicurezza sulla catena di dipendenze.
 const MAX_FILES: usize = 32;
-
-fn loaders() -> &'static [&'static str] {
-    ContentKind::Plugin.loaders(None).unwrap_or_default()
-}
 
 fn content_err(e: hyper_content::ContentError) -> ServerError {
     ServerError::Content(Box::new(e))
@@ -48,7 +61,7 @@ pub struct InstalledPlugin {
 
 /// Jar presenti (attivi e disattivati) con il loro SHA1.
 fn jars(dir: &Path) -> Vec<(String, PathBuf, Sha1Hex, u64)> {
-    let Ok(entries) = std::fs::read_dir(dir.join(DIR)) else {
+    let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
     };
     entries
@@ -118,9 +131,9 @@ pub async fn installed(api: &Modrinth, dir: &Path) -> Result<Vec<InstalledPlugin
 }
 
 /// Ultima versione per questa versione di Minecraft (le release prima).
-async fn pick(api: &Modrinth, project: &str, game: &str) -> Result<Version> {
+async fn pick(api: &Modrinth, project: &str, game: &str, loaders: &[&str]) -> Result<Version> {
     let versions = api
-        .versions(project, loaders(), &[game])
+        .versions(project, loaders, &[game])
         .await
         .map_err(content_err)?;
     let best = versions
@@ -138,10 +151,11 @@ pub async fn install(
     api: &Modrinth,
     downloader: &Downloader,
     dir: &Path,
+    loaders: &[&str],
     project: &str,
     game: &str,
 ) -> Result<Vec<String>> {
-    let plugins = dir.join(DIR);
+    let plugins = dir.to_owned();
     // Progetti già presenti (anche disattivati): non si riscaricano.
     let present: HashSet<String> = installed(api, dir)
         .await?
@@ -150,7 +164,7 @@ pub async fn install(
         .collect();
     let mut seen: HashSet<String> = present.clone();
     let mut queue = VecDeque::new();
-    let root = pick(api, project, game).await?;
+    let root = pick(api, project, game, loaders).await?;
     if present.contains(&root.project_id) {
         return Err(ServerError::Invalid(format!(
             "{} is already installed",
@@ -189,7 +203,7 @@ pub async fn install(
             }
             let Some(id) = &dep.project_id else { continue };
             if seen.insert(id.clone()) {
-                queue.push_back(pick(api, id, game).await?);
+                queue.push_back(pick(api, id, game, loaders).await?);
             }
         }
     }
@@ -207,7 +221,7 @@ fn plugin_file(dir: &Path, file: &str) -> Result<PathBuf> {
     if !(lower.ends_with(".jar") || lower.ends_with(".jar.disabled")) {
         return Err(ServerError::Invalid(format!("{name} is not a plugin")));
     }
-    let path = dir.join(DIR).join(name);
+    let path = dir.join(name);
     if !path.is_file() {
         return Err(ServerError::NotFound(name.to_owned()));
     }
@@ -223,7 +237,7 @@ pub fn set_enabled(dir: &Path, file: &str, enabled: bool) -> Result<String> {
         (false, false) => format!("{file}{DISABLED}"),
         _ => return Ok(file.to_owned()),
     };
-    let target = dir.join(DIR).join(&new_name);
+    let target = dir.join(&new_name);
     if target.exists() {
         return Err(ServerError::Invalid(format!(
             "{new_name} already exists in the plugins folder"
@@ -245,24 +259,28 @@ mod tests {
 
     #[test]
     fn enables_disables_and_refuses_paths() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(dir.path().join(DIR)).unwrap();
-        std::fs::write(dir.path().join(DIR).join("Essentials.jar"), b"x").unwrap();
-        std::fs::write(dir.path().join("server.jar"), b"x").unwrap();
+        let server = tempfile::tempdir().unwrap();
+        std::fs::write(server.path().join("server.jar"), b"x").unwrap();
+        let (folder, loaders) = target(server.path(), crate::ServerKind::Paper).unwrap();
+        assert!(loaders.contains(&"paper"));
+        assert!(target(server.path(), crate::ServerKind::Vanilla).is_none());
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("Essentials.jar"), b"x").unwrap();
+        let dir = folder.as_path();
 
-        let off = set_enabled(dir.path(), "Essentials.jar", false).unwrap();
+        let off = set_enabled(dir, "Essentials.jar", false).unwrap();
         assert_eq!(off, "Essentials.jar.disabled");
-        let found = jars(dir.path());
+        let found = jars(dir);
         assert_eq!(found.len(), 1);
-        let on = set_enabled(dir.path(), &off, true).unwrap();
+        let on = set_enabled(dir, &off, true).unwrap();
         assert_eq!(on, "Essentials.jar");
 
         for bad in ["../server.jar", "..\\server.jar", "config.yml", "C:x.jar"] {
-            assert!(remove(dir.path(), bad).is_err(), "{bad}");
-            assert!(set_enabled(dir.path(), bad, false).is_err(), "{bad}");
+            assert!(remove(dir, bad).is_err(), "{bad}");
+            assert!(set_enabled(dir, bad, false).is_err(), "{bad}");
         }
-        assert!(dir.path().join("server.jar").exists());
-        remove(dir.path(), "Essentials.jar").unwrap();
-        assert!(jars(dir.path()).is_empty());
+        assert!(server.path().join("server.jar").exists());
+        remove(dir, "Essentials.jar").unwrap();
+        assert!(jars(dir).is_empty());
     }
 }

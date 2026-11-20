@@ -8,6 +8,7 @@
   import PlayButton from '../components/PlayButton.svelte';
   import DeleteInstanceDialog from '../components/DeleteInstanceDialog.svelte';
   import ContentList from '../components/ContentList.svelte';
+  import BackupList from '../components/BackupList.svelte';
   import { pickFile, squarePng } from '../lib/image';
   import { t } from '../lib/i18n.svelte';
 
@@ -17,6 +18,8 @@
   let tab = $state<Tab>('mods');
   let modCount = $state<number | null>(null);
   let worlds = $state<World[]>([]);
+  /** Mondo di cui si vedono i backup. */
+  let openWorld = $state<string | null>(null);
   let exporting = $state(false);
 
   // Impostazioni istanza (modulo).
@@ -168,7 +171,23 @@
       <div class="tools"><button class="btn" onclick={() => api.openFolder(name, 'saves')}><Icon name="folder" size={16} /> {t('Apri cartella mondi')}</button></div>
       <div class="worlds">
         {#each worlds as w (w.name)}
-          <div class="card world"><span class="mod-name">{w.name}</span><span class="muted small">{t('Ultimo accesso: {when}', { when: relativeDay(w.lastPlayed) })}</span></div>
+          <div class="card world">
+            <div class="world-row">
+              <span class="world-meta"><span class="mod-name">{w.name}</span><span class="muted small">{t('Ultimo accesso: {when}', { when: relativeDay(w.lastPlayed) })}</span></span>
+              <button class="btn small" aria-expanded={openWorld === w.name} onclick={() => (openWorld = openWorld === w.name ? null : w.name)}><Icon name="download" size={14} /> {t('Backup')}</button>
+            </div>
+            {#if openWorld === w.name}
+              <BackupList
+                compact
+                title={t('Backup di {world}', { world: w.name })}
+                load={() => api.worldBackups(name, w.name)}
+                create={() => api.worldBackup(name, w.name)}
+                restore={(file) => api.worldBackupRestore(name, w.name, file)}
+                remove={(file) => api.worldBackupDelete(name, w.name, file)}
+                restoreBlocked={app.launches[name] ? t('Chiudi il gioco per fare o ripristinare un backup.') : null}
+              />
+            {/if}
+          </div>
         {:else}
           <p class="muted">{t('Nessun mondo ancora: crealo dal gioco.')}</p>
         {/each}
@@ -240,8 +259,11 @@
   .tabs button.on { color: var(--text); border-bottom-color: var(--accent-line); }
   .tools { display: flex; gap: 10px; flex-wrap: wrap; }
   .mod-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .worlds { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
-  .world { padding: 16px; display: flex; flex-direction: column; gap: 4px; }
+  /* Un mondo per riga: sotto ognuno si aprono i suoi backup. */
+  .worlds { display: flex; flex-direction: column; gap: 12px; }
+  .world { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+  .world-row { display: flex; align-items: center; gap: 12px; }
+  .world-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
   .console { min-height: 320px; max-height: 460px; background: var(--bg-deep); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; font-family: var(--mono); font-size: 12px; line-height: 1.7; color: var(--text-2); white-space: pre-wrap; word-break: break-word; user-select: text; }
   .form { padding: 22px; display: flex; flex-direction: column; gap: 16px; max-width: 680px; }
   .setting { display: flex; justify-content: space-between; align-items: center; gap: 16px; }

@@ -83,3 +83,9 @@ impl From<InstallerError> for ServerError {
 }
 
 pub type Result<T, E = ServerError> = std::result::Result<T, E>;
+
+impl From<hyper_content::ContentError> for ServerError {
+    fn from(e: hyper_content::ContentError) -> Self {
+        Self::Content(Box::new(e))
+    }
+}

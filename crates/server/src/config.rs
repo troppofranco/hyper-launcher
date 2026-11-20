@@ -13,6 +13,10 @@ use crate::{Result, ServerError};
 pub enum ServerKind {
     Vanilla,
     Paper,
+    Fabric,
+    #[serde(rename = "neoforge")]
+    NeoForge,
+    Forge,
 }
 
 impl ServerKind {
@@ -20,8 +24,47 @@ impl ServerKind {
         match self {
             Self::Vanilla => "vanilla",
             Self::Paper => "paper",
+            Self::Fabric => "fabric",
+            Self::NeoForge => "neoforge",
+            Self::Forge => "forge",
         }
     }
+
+    /// Loader delle mod (nessuno per Vanilla e Paper).
+    pub fn loader(self) -> Option<hyper_installer::LoaderKind> {
+        use hyper_installer::LoaderKind;
+        match self {
+            Self::Vanilla | Self::Paper => None,
+            Self::Fabric => Some(LoaderKind::Fabric),
+            Self::NeoForge => Some(LoaderKind::NeoForge),
+            Self::Forge => Some(LoaderKind::Forge),
+        }
+    }
+
+    /// Il tipo di server per un loader (Quilt non ha server).
+    pub fn for_loader(kind: hyper_installer::LoaderKind) -> Option<Self> {
+        use hyper_installer::LoaderKind;
+        match kind {
+            LoaderKind::Fabric => Some(Self::Fabric),
+            LoaderKind::NeoForge => Some(Self::NeoForge),
+            LoaderKind::Forge => Some(Self::Forge),
+            LoaderKind::Quilt => None,
+        }
+    }
+}
+
+/// Modpack da cui è nato un server (per "Gioca" e per l'invito).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ModpackSource {
+    pub name: String,
+    /// Progetto Modrinth, se il pack viene da lì.
+    #[serde(default)]
+    pub project: Option<String>,
+}
+
+/// Avvio predefinito (Vanilla, Paper): `-jar server.jar nogui`.
+pub fn default_launch() -> Vec<String> {
+    vec!["-jar".into(), JAR.into(), "nogui".into()]
 }
 
 /// Configurazione di un server.
@@ -51,14 +94,53 @@ pub struct ServerConfig {
     /// Indirizzo pubblico del tunnel (es. `nome.tun.ply.gg`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub playit_address: Option<String>,
+    /// Riavvio giornaliero e backup automatici.
+    #[serde(default)]
+    pub schedule: Schedule,
+    /// Versione del loader (Fabric, NeoForge, Forge).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loader_version: Option<String>,
+    /// Argomenti di `java` dopo i flag di memoria.
+    #[serde(default = "default_launch")]
+    pub launch: Vec<String>,
+    /// Modpack di origine, se creato da un modpack.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modpack: Option<ModpackSource>,
+    /// Istanza usata da "Gioca" per entrare nel server.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instance: Option<String>,
 }
 
 /// Memoria ammessa per un server, in MB.
 pub const MEMORY_MB: std::ops::RangeInclusive<u32> = 512..=65536;
 /// Porte ammesse (sotto 1024 servono privilegi).
 pub const PORTS: std::ops::RangeInclusive<u16> = 1024..=65535;
+/// Automatismi di un server, eseguiti dall'host (anche a launcher chiuso).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Schedule {
+    /// Ora del riavvio giornaliero (`"05:00"`, ora locale), se attivo.
+    pub restart_at: Option<String>,
+    /// Backup automatico ogni N ore, se attivo.
+    pub backup_hours: Option<u32>,
+    /// Quanti backup tenere (i più vecchi si cancellano).
+    pub keep_backups: u32,
+}
+
+impl Default for Schedule {
+    fn default() -> Self {
+        Self {
+            restart_at: None,
+            backup_hours: None,
+            keep_backups: 10,
+        }
+    }
+}
+
 /// File del server Minecraft dentro la sua cartella.
 pub const JAR: &str = "server.jar";
+/// Copia del modpack da cui è nato il server (per creare l'istanza di gioco).
+pub const MODPACK_COPY: &str = ".hyper-modpack.mrpack";
 /// Immagine del server nella lista dei server di Minecraft.
 pub const ICON: &str = "server-icon.png";
 /// Lato dell'immagine richiesto da Minecraft.
@@ -247,6 +329,11 @@ mod tests {
             java_component: "java-runtime-delta".into(),
             playit_tunnel: None,
             playit_address: None,
+            schedule: Schedule::default(),
+            loader_version: None,
+            launch: default_launch(),
+            modpack: None,
+            instance: None,
         }
     }
 

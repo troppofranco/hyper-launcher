@@ -1,7 +1,7 @@
 <script lang="ts">
   // Terminale del server: righe nuove ogni secondo mentre è acceso, comandi
   // con cronologia (↑/↓) e scorrimento automatico finché si è in fondo.
-  import { api } from '../../lib/api';
+  import { api, type CrashInfo } from '../../lib/api';
   import { app } from '../../lib/store.svelte';
   import { t } from '../../lib/i18n.svelte';
   import { parseLine, plain } from './console';
@@ -39,10 +39,15 @@
     if (lines.length > MAX_LINES) lines.splice(0, lines.length - TRIM_TO);
   }
 
+  // Causa dell'ultimo arresto con errore, mostrata sopra la console.
+  let crash = $state<CrashInfo | null>(null);
+
   $effect(() => {
+    crash = null;
     if (running) return poll(fetchLines, 1000);
     // Spento: si mostra comunque l'ultimo log, una volta.
     fetchLines().catch(() => {});
+    api.serverCrash(name).then((c) => (crash = c)).catch(() => {});
   });
 
   // Dopo ogni aggiunta (il DOM è già aggiornato) si torna in fondo.
@@ -93,6 +98,13 @@
   }
 </script>
 
+{#if crash}
+  <div class="crash" role="alert">
+    <strong>{t(crash.title)}</strong>
+    {#if crash.cause}<code>{crash.cause}</code>{/if}
+    <span>{t(crash.hint)}</span>
+  </div>
+{/if}
 <section class="term" aria-label={t('Console del server')}>
   <div class="bar">
     <span class="title">{t('Console')}</span>
@@ -125,6 +137,8 @@
 </section>
 
 <style>
+  .crash { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--danger) 12%, transparent); border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent); font-size: 13px; }
+  .crash code { font-family: var(--mono); font-size: 12px; color: var(--text-2); overflow-wrap: anywhere; }
   .term { border-radius: var(--radius); background: var(--bg-deep); border: 1px solid var(--line); display: flex; flex-direction: column; height: 330px; overflow: hidden; }
   .bar { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px 8px 16px; border-bottom: 1px solid var(--line); }
   .title { font-weight: 600; font-size: 13px; color: var(--text-2); }

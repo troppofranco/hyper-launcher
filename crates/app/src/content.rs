@@ -40,6 +40,9 @@ pub struct SearchInput {
     pub sort: SearchSort,
     #[serde(default)]
     pub offset: u32,
+    /// Solo ciò che funziona su un server.
+    #[serde(default)]
+    pub server_side: bool,
 }
 
 #[tauri::command]
@@ -63,6 +66,7 @@ pub async fn content_search(
     query.categories = input.categories;
     query.sort = input.sort;
     query.offset = input.offset;
+    query.server_side = input.server_side;
     let results = state.modrinth.search(&query).await.cmd()?;
     Ok(SearchView::from(results))
 }
@@ -98,7 +102,10 @@ struct ContentProgress<'a> {
 }
 
 /// Callback di avanzamento verso la UI, al massimo ogni 100 ms.
-fn progress_emitter<'a>(app: &'a AppHandle, instance: &'a str) -> impl Fn(Progress) + Sync + 'a {
+pub(crate) fn progress_emitter<'a>(
+    app: &'a AppHandle,
+    instance: &'a str,
+) -> impl Fn(Progress) + Sync + 'a {
     let last = Mutex::new(None::<Instant>);
     move |p: Progress| {
         let mut last = last.lock().unwrap_or_else(|e| e.into_inner());

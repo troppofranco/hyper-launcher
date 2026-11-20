@@ -69,6 +69,10 @@ impl HostClient {
     }
 
     async fn request(&self, op: Op) -> Result<serde_json::Value> {
+        self.request_within(op, Duration::from_secs(10)).await
+    }
+
+    async fn request_within(&self, op: Op, limit: Duration) -> Result<serde_json::Value> {
         let info = self.info()?;
         let exchange = async {
             let mut stream = TcpStream::connect(("127.0.0.1", info.port)).await?;
@@ -84,7 +88,7 @@ impl HostClient {
                 .await?;
             Ok::<_, ServerError>(serde_json::from_str::<Response>(&reply)?)
         };
-        let response = tokio::time::timeout(Duration::from_secs(10), exchange)
+        let response = tokio::time::timeout(limit, exchange)
             .await
             .map_err(|_| ServerError::HostUnavailable)?
             .map_err(|e| match e {
@@ -160,6 +164,24 @@ impl HostClient {
 
     pub async fn stats(&self, name: &str) -> Result<Stats> {
         self.typed(Op::Stats { name: name.into() }).await
+    }
+
+    /// Backup del mondo di un server (anche acceso: può durare minuti).
+    pub async fn backup(
+        &self,
+        name: &str,
+        auto: bool,
+    ) -> Result<hyper_installer::backups::BackupInfo> {
+        let data = self
+            .request_within(
+                Op::Backup {
+                    name: name.into(),
+                    auto,
+                },
+                Duration::from_secs(30 * 60),
+            )
+            .await?;
+        Ok(serde_json::from_value(data)?)
     }
 
     /// Ferma i server senza "resta acceso" (alla chiusura del launcher).

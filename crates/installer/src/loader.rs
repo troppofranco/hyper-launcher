@@ -192,26 +192,7 @@ impl Installer {
         game: &str,
         vanilla: &VersionJson,
     ) -> Result<VersionJson> {
-        let (game, loader) = (safe_component(game)?, safe_component(&spec.version)?);
-        // Finiscono in URL e nomi di file: solo caratteri da numero di
-        // versione (niente `%`, `?`, `#` che cambierebbero l'URL).
-        for v in [game, loader] {
-            if !v
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b"._+-".contains(&b))
-            {
-                return Err(InstallerError::UnsupportedVersion {
-                    version: v.to_owned(),
-                    reason: "unexpected characters in the version".into(),
-                });
-            }
-        }
-        if !spec.kind.supports_game(game) {
-            return Err(InstallerError::UnsupportedVersion {
-                version: game.to_owned(),
-                reason: format!("{} is not supported for it", spec.kind.display_name()),
-            });
-        }
+        let (game, loader) = checked_versions(spec, game)?;
         let profile = match spec.kind {
             LoaderKind::Fabric => {
                 self.meta_profile(FABRIC_META_URL, "fabric", game, loader)
@@ -337,7 +318,7 @@ impl Installer {
             fs::write_atomic(&profiles, br#"{"profiles":{}}"#)?;
         }
 
-        let result = run_installer(&java, &jar, self.paths.root(), &dir).await;
+        let result = run_installer(&java, &jar, "--installClient", self.paths.root(), &dir).await;
         let _ = std::fs::remove_file(&jar);
         let _ = std::fs::remove_file(jar.with_extension("jar.log"));
         result.map_err(|message| InstallerError::LoaderInstaller {
@@ -349,6 +330,138 @@ impl Installer {
         fs::write_atomic(&profile_path.with_file_name(INSTALLED_MARKER), b"ok")?;
         Ok(profile)
     }
+}
+
+// ---------- Server dedicati con loader ----------
+
+impl Installer {
+    /// Installa il server di un loader nella cartella `dir` e restituisce gli
+    /// argomenti di avvio da mettere dopo i flag di memoria di `java`.
+    ///
+    /// - **Fabric**: profilo server dall'API ufficiale e librerie scaricate
+    ///   con il loro SHA1 (come per il client); il gioco è il `server.jar`
+    ///   vanilla già presente in `dir`.
+    /// - **NeoForge / Forge**: installer ufficiale verificato con lo SHA1
+    ///   pubblicato, eseguito con `--installServer`; si avvia con i file di
+    ///   argomenti che crea.
+    pub async fn install_loader_server(
+        &self,
+        spec: &LoaderSpec,
+        game: &str,
+        dir: &Path,
+        java: &Path,
+    ) -> Result<Vec<String>> {
+        let (game, loader) = checked_versions(spec, game)?;
+        match spec.kind {
+            LoaderKind::Fabric => self.fabric_server(game, loader).await,
+            LoaderKind::NeoForge | LoaderKind::Forge => {
+                self.forge_server(spec.kind, game, loader, dir, java).await
+            }
+            LoaderKind::Quilt => Err(InstallerError::UnsupportedVersion {
+                version: loader.to_owned(),
+                reason: "Quilt servers are not supported".into(),
+            }),
+        }
+    }
+
+    async fn fabric_server(&self, game: &str, loader: &str) -> Result<Vec<String>> {
+        let url = format!("{FABRIC_META_URL}/versions/loader/{game}/{loader}/server/json");
+        let profile: VersionJson = parse_json(&self.downloader.get_bytes(&url).await?, &url)?;
+        let libraries_dir = self.paths.libraries_dir();
+        let mut tasks = Vec::new();
+        for library in &profile.libraries {
+            tasks.push(self.maven_library_task(library, &libraries_dir).await?);
+        }
+        let classpath: Vec<String> = tasks.iter().map(|t| t.path.display().to_string()).collect();
+        self.downloader.run(tasks, None).await?;
+        let separator = if cfg!(windows) { ";" } else { ":" };
+        Ok(vec![
+            "-cp".into(),
+            classpath.join(separator),
+            "-Dfabric.gameJarPath=server.jar".into(),
+            profile.main_class,
+            "nogui".into(),
+        ])
+    }
+
+    async fn forge_server(
+        &self,
+        kind: LoaderKind,
+        game: &str,
+        loader: &str,
+        dir: &Path,
+        java: &Path,
+    ) -> Result<Vec<String>> {
+        let (url, args_dir) = match kind {
+            LoaderKind::NeoForge => (
+                format!(
+                    "{NEOFORGE_MAVEN}/net/neoforged/neoforge/{loader}/neoforge-{loader}-installer.jar"
+                ),
+                format!("libraries/net/neoforged/neoforge/{loader}"),
+            ),
+            _ => (
+                format!(
+                    "{FORGE_MAVEN}/net/minecraftforge/forge/{game}-{loader}/forge-{game}-{loader}-installer.jar"
+                ),
+                format!("libraries/net/minecraftforge/forge/{game}-{loader}"),
+            ),
+        };
+        let jar = dir.join("loader-installer.jar");
+        let sha1 = parse_sha1_sidecar(&self.downloader.get_bytes(&format!("{url}.sha1")).await?)?;
+        self.downloader
+            .fetch(DownloadTask::new(&url, jar.clone(), sha1, None))
+            .await?;
+        let result = run_installer(java, &jar, "--installServer", dir, dir).await;
+        let _ = std::fs::remove_file(&jar);
+        let _ = std::fs::remove_file(jar.with_extension("jar.log"));
+        result.map_err(|message| InstallerError::LoaderInstaller {
+            loader: kind.display_name().to_owned(),
+            message,
+        })?;
+        let args_file = format!(
+            "{args_dir}/{}",
+            if cfg!(windows) {
+                "win_args.txt"
+            } else {
+                "unix_args.txt"
+            }
+        );
+        if !dir.join(&args_file).is_file() {
+            return Err(InstallerError::LoaderInstaller {
+                loader: kind.display_name().to_owned(),
+                message: format!("{args_file} not created"),
+            });
+        }
+        Ok(vec![
+            "@user_jvm_args.txt".into(),
+            format!("@{args_file}"),
+            "nogui".into(),
+        ])
+    }
+}
+
+/// Versione del gioco e del loader, controllate: finiscono in URL e nomi di
+/// file, quindi solo caratteri da numero di versione.
+fn checked_versions<'a>(spec: &'a LoaderSpec, game: &'a str) -> Result<(&'a str, &'a str)> {
+    let (game, loader) = (safe_component(game)?, safe_component(&spec.version)?);
+    for v in [game, loader] {
+        if !v
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"._+-".contains(&b))
+        {
+            return Err(InstallerError::UnsupportedVersion {
+                version: v.to_owned(),
+                reason: "unexpected characters in the version".into(),
+            });
+        }
+    }
+    if !spec.kind.supports_game(game) {
+        return Err(InstallerError::UnsupportedVersion {
+            version: game.to_owned(),
+            reason: format!("{} is not supported for it", spec.kind.display_name()),
+        });
+    }
+    Ok((game, loader))
 }
 
 /// Scritto accanto al profilo NeoForge/Forge quando l'installer finisce bene.
@@ -377,12 +490,18 @@ fn installer_version_id(jar: &Path) -> Result<String> {
 
 /// `java -jar installer.jar --install-client <root>`, senza finestra di
 /// console. In caso di errore restituisce le ultime righe di output.
-async fn run_installer(java: &Path, jar: &Path, root: &Path, cwd: &Path) -> Result<(), String> {
+async fn run_installer(
+    java: &Path,
+    jar: &Path,
+    mode: &str,
+    root: &Path,
+    cwd: &Path,
+) -> Result<(), String> {
     let mut command = tokio::process::Command::new(java);
     command
         .arg("-jar")
         .arg(jar)
-        .arg("--installClient")
+        .arg(mode)
         .arg(root)
         .current_dir(cwd)
         .stdin(std::process::Stdio::null())

@@ -4,7 +4,7 @@
 
 use hyper_core::fs;
 use hyper_installer::loader::compare_versions;
-use hyper_installer::{DownloadTask, Installer, Progress, Stage, VersionKind};
+use hyper_installer::{DownloadTask, Installer, LoaderSpec, Progress, Stage, VersionKind};
 use reqwest::Url;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -49,6 +49,8 @@ pub struct NewServer {
     pub autostart: bool,
     /// L'utente ha accettato l'EULA di Minecraft.
     pub eula: bool,
+    /// Versione del loader (Fabric, NeoForge, Forge); `None` = l'ultima.
+    pub loader_version: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -80,16 +82,17 @@ async fn get_json<T: for<'de> Deserialize<'de>>(installer: &Installer, url: &str
     Ok(serde_json::from_slice(&bytes)?)
 }
 
-/// Versioni installabili, dalla più recente: le release di Minecraft per
-/// Vanilla, quelle stabili supportate da Paper.
+/// Versioni installabili, dalla più recente: le release di Minecraft (per i
+/// loader solo quelle che supportano), quelle stabili supportate da Paper.
 pub async fn versions(installer: &Installer, kind: ServerKind) -> Result<Vec<String>> {
     match kind {
-        ServerKind::Vanilla => {
+        ServerKind::Vanilla | ServerKind::Fabric | ServerKind::NeoForge | ServerKind::Forge => {
             let manifest = installer.fetch_manifest().await?;
             Ok(manifest
                 .versions
                 .iter()
                 .filter(|v| v.kind == VersionKind::Release)
+                .filter(|v| kind.loader().is_none_or(|l| l.supports_game(&v.id)))
                 .map(|v| v.id.clone())
                 .collect())
         }
@@ -180,6 +183,11 @@ pub async fn create(
         java_component: String::new(),
         playit_tunnel: None,
         playit_address: None,
+        schedule: crate::config::Schedule::default(),
+        loader_version: None,
+        launch: crate::config::default_launch(),
+        modpack: None,
+        instance: None,
     };
     config.validate_settings()?;
     if manager.exists(&request.name) {
@@ -205,10 +213,24 @@ pub async fn create(
     let result = async {
         std::fs::create_dir_all(&dir)?;
         report(CreateStage::Download, 0, 1);
+        // Loader: la versione scelta o l'ultima per questa versione del gioco.
+        let loader = match request.kind.loader() {
+            Some(kind) => Some(match &request.loader_version {
+                Some(version) => LoaderSpec {
+                    kind,
+                    version: version.clone(),
+                },
+                None => installer.latest_loader(kind, &request.version).await?,
+            }),
+            None => None,
+        };
+        config.loader_version = loader.as_ref().map(|l| l.version.clone());
         let version = installer.vanilla_version(&entry).await?;
         let jar = dir.join(JAR);
         config.build = match request.kind {
-            ServerKind::Vanilla => {
+            // Fabric usa il server vanilla come gioco; NeoForge e Forge se lo
+            // scarica il loro installer.
+            ServerKind::Vanilla | ServerKind::Fabric => {
                 let server = version
                     .downloads
                     .as_ref()
@@ -226,16 +248,22 @@ pub async fn create(
                 None
             }
             ServerKind::Paper => Some(download_paper(installer, &request.version, &jar).await?),
+            ServerKind::NeoForge | ServerKind::Forge => None,
         };
         report(CreateStage::Download, 1, 1);
 
         let component = version.java_component().to_owned();
         let java_progress = |_: Stage, p: Progress| report(CreateStage::Java, p.done, p.total);
-        installer
+        let java = installer
             .install_java(&component, Some(&java_progress))
             .await?;
 
         report(CreateStage::Setup, 0, 1);
+        if let Some(spec) = &loader {
+            config.launch = installer
+                .install_loader_server(spec, &request.version, &dir, &java)
+                .await?;
+        }
         fs::write_atomic(
             &dir.join("eula.txt"),
             b"# Accettata dall'utente in Hyper Launcher: https://aka.ms/MinecraftEULA\neula=true\n",
@@ -259,6 +287,56 @@ pub async fn create(
             Err(e)
         }
     }
+}
+
+/// Crea un server da un modpack (`.mrpack`): tipo, versione del gioco e del
+/// loader vengono dal pack (`request` ne dà nome, risorse, porta ed EULA),
+/// poi si scaricano i file che servono al server e gli override. Se i file
+/// non arrivano il server appena creato viene eliminato.
+pub async fn create_from_modpack(
+    installer: &Installer,
+    manager: &ServerManager,
+    request: &NewServer,
+    pack: &std::path::Path,
+    source: crate::config::ModpackSource,
+    progress: Option<CreateProgress<'_>>,
+) -> Result<ServerConfig> {
+    use hyper_content::mrpack;
+    let index = mrpack::read_index(pack)?;
+    let (game, loader) = mrpack::requirements(&index)?;
+    let kind = match &loader {
+        None => ServerKind::Vanilla,
+        Some(l) => ServerKind::for_loader(l.kind).ok_or_else(|| {
+            ServerError::Unsupported(format!("{} servers", l.kind.display_name()))
+        })?,
+    };
+    let request = NewServer {
+        kind,
+        version: game,
+        loader_version: loader.map(|l| l.version),
+        ..request.clone()
+    };
+    let mut config = create(installer, manager, &request, progress).await?;
+    let dir = manager.dir(&config.name)?;
+    let files_progress = |p: Progress| {
+        if let Some(report) = progress {
+            report(CreateStage::Setup, p.done, p.total);
+        }
+    };
+    let files =
+        mrpack::install_server_files(installer.downloader(), pack, &dir, Some(&files_progress))
+            .await;
+    if let Err(e) = files {
+        let _ = manager.delete(&config.name);
+        return Err(e.into());
+    }
+    // Copia del pack: "Gioca" ne crea l'istanza con le stesse mod.
+    if let Err(e) = std::fs::copy(pack, dir.join(crate::config::MODPACK_COPY)) {
+        tracing::warn!(error = %e, "cannot keep a copy of the modpack");
+    }
+    config.modpack = Some(source);
+    manager.save(&config)?;
+    Ok(config)
 }
 
 #[cfg(test)]

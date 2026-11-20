@@ -6,8 +6,13 @@ import { t } from '../../lib/i18n.svelte';
 import { app } from '../../lib/store.svelte';
 
 /** "Paper 1.21.4 · build 232" oppure "Vanilla 1.21.4". */
-export function kindLabel(s: Pick<ServerInfo, 'kind' | 'version' | 'build'>): string {
-  const base = `${s.kind === 'paper' ? 'Paper' : 'Vanilla'} ${s.version}`;
+/** Nome leggibile del tipo di server. */
+export const KIND_NAMES: Record<ServerInfo['kind'], string> = { vanilla: 'Vanilla', paper: 'Paper', fabric: 'Fabric', neoforge: 'NeoForge', forge: 'Forge' };
+
+export function kindLabel(s: Pick<ServerInfo, 'kind' | 'version' | 'build'> & Partial<Pick<ServerInfo, 'loaderVersion' | 'modpack'>>): string {
+  const base = `${KIND_NAMES[s.kind]} ${s.version}`;
+  if (s.modpack) return `${base} · ${s.modpack.name}`;
+  if (s.loaderVersion) return `${base} · ${s.loaderVersion}`;
   return s.build !== null ? `${base} · ${t('build {n}', { n: s.build })}` : base;
 }
 

@@ -5,6 +5,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod appearance;
+mod backups;
 mod commands;
 mod content;
 mod custom;
@@ -107,6 +108,10 @@ fn main() {
             servers::server_list,
             servers::server_versions,
             servers::server_create,
+            servers::server_pick_modpack,
+            servers::server_create_modpack,
+            servers::server_play,
+            servers::server_crash,
             servers::server_delete,
             servers::server_start,
             servers::server_stop,
@@ -116,6 +121,15 @@ fn main() {
             servers::server_stats,
             servers::server_update,
             servers::server_set_icon,
+            servers::server_set_schedule,
+            backups::server_backups,
+            backups::server_backup,
+            backups::server_backup_restore,
+            backups::server_backup_delete,
+            backups::world_backups,
+            backups::world_backup,
+            backups::world_backup_restore,
+            backups::world_backup_delete,
             servers::playit_status,
             servers::playit_connect,
             servers::playit_disconnect,

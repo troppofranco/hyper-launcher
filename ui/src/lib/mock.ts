@@ -3,7 +3,7 @@
 // se non come codice inutilizzato.
 
 import type { Route } from './store.svelte';
-import type { Account, InstalledContent, Instance, SearchHit, ServerInfo, ServerPlayers, ServerPlugin, ServerProperties, Settings, StatsPoint } from './api';
+import type { Account, BackupInfo, InstalledContent, Instance, SearchHit, ServerInfo, ServerPlayers, ServerPlugin, ServerProperties, Settings, StatsPoint } from './api';
 
 type Handler = (payload: unknown) => void;
 const handlers = new Map<string, Set<Handler>>();
@@ -164,7 +164,7 @@ function statsPoint(s: MockServer, t: number): StatsPoint {
 
 const servers: MockServer[] = [
   {
-    info: { name: 'Server degli amici', kind: 'paper', version: '1.21.4', build: 232, memoryMb: 4096, port: 25565, keepRunning: true, autostart: false, created: now() - 86400 * 20, running: true, startedAt: now() - 8040, players: 2, maxPlayers: 20, address: '192.168.1.20:25565', icon: null, publicAddress: null },
+    info: { name: 'Server degli amici', kind: 'paper', version: '1.21.4', build: 232, memoryMb: 4096, port: 25565, keepRunning: true, autostart: false, created: now() - 86400 * 20, running: true, startedAt: now() - 8040, players: 2, maxPlayers: 20, address: '192.168.1.20:25565', icon: null, publicAddress: null, loaderVersion: null, modpack: null, schedule: { restart_at: null, backup_hours: 6, keep_backups: 10 } },
     props: defaultProps(25565),
     players: {
       online: ['Marco', 'Giulia'],
@@ -192,7 +192,7 @@ const servers: MockServer[] = [
     ],
   },
   {
-    info: { name: 'Survival vanilla', kind: 'vanilla', version: '1.21.4', build: null, memoryMb: 3072, port: 25566, keepRunning: false, autostart: false, created: now() - 86400 * 4, running: false, startedAt: null, players: 0, maxPlayers: 10, address: '192.168.1.20:25566', icon: null, publicAddress: null },
+    info: { name: 'Survival vanilla', kind: 'vanilla', version: '1.21.4', build: null, memoryMb: 3072, port: 25566, keepRunning: false, autostart: false, created: now() - 86400 * 4, running: false, startedAt: null, players: 0, maxPlayers: 10, address: '192.168.1.20:25566', icon: null, publicAddress: null, loaderVersion: null, modpack: null, schedule: { restart_at: null, backup_hours: 6, keep_backups: 10 } },
     props: { ...defaultProps(25566), maxPlayers: 10, motd: 'A Minecraft Server', onlineMode: true, whitelist: false },
     players: { online: [], ops: [], whitelist: [], banned: [] },
     console: [],
@@ -322,6 +322,15 @@ function simulateServerCreate(name: string) {
   });
 }
 
+/** Backup simulati per chiave (`s:<server>` o `w:<istanza>/<mondo>`). */
+const backups = new Map<string, BackupInfo[]>();
+function mockBackups(key: string, count = 3): BackupInfo[] {
+  if (!backups.has(key)) {
+    backups.set(key, Array.from({ length: count }, (_, i) => ({ file: `${now() - 21600 * (i + 1)}-auto.zip`, created: now() - 21600 * (i + 1), sizeBytes: 140_000_000 - i * 1_000_000, auto: i < 2 })));
+  }
+  return backups.get(key)!;
+}
+
 /** playit.gg collegato (simulato). */
 let playitConnected = false;
 
@@ -334,12 +343,31 @@ function serverCommands(): Record<string, (args: Record<string, any>) => unknown
       if (!input.eula) throw 'Per creare un server bisogna accettare l’EULA di Minecraft.';
       await simulateServerCreate(input.name);
       const s: MockServer = {
-        info: { name: input.name, kind: input.kind, version: input.version, build: input.kind === 'paper' ? 230 : null, memoryMb: input.memoryMb, port: input.port, keepRunning: input.keepRunning, autostart: input.autostart, created: now(), running: false, startedAt: null, players: 0, maxPlayers: 20, address: `192.168.1.20:${input.port}`, icon: null, publicAddress: null },
+        info: { name: input.name, kind: input.kind, version: input.version, build: input.kind === 'paper' ? 230 : null, memoryMb: input.memoryMb, port: input.port, keepRunning: input.keepRunning, autostart: input.autostart, created: now(), running: false, startedAt: null, players: 0, maxPlayers: 20, address: `192.168.1.20:${input.port}`, icon: null, publicAddress: null, loaderVersion: input.loaderVersion ?? null, modpack: null, schedule: { restart_at: null, backup_hours: null, keep_backups: 10 } },
         props: { ...defaultProps(input.port), motd: 'A Minecraft Server' },
         players: { online: [], ops: [], whitelist: [], banned: [] },
         console: [],
         points: [],
         files: serverFiles(input.kind),
+        plugins: [],
+      };
+      servers.push(s);
+      return structuredClone(s.info);
+    },
+    server_crash: ({ name }) => (findServer(name).info.running ? null : { title: 'Porta già in uso', cause: '[21:31:18 WARN]: **** FAILED TO BIND TO PORT!', hint: 'Un altro programma (o un altro server) usa questa porta: chiudilo o cambia la porta nelle impostazioni del server.', file: null }),
+    server_play: ({ name }) => ({ instance: 'Sopravvivenza', join: `localhost:${findServer(name).info.port}` }),
+    server_pick_modpack: () => ({ path: 'C:\\Users\\utente\\Downloads\\Avventura.mrpack', name: 'Avventura tra amici', game: '1.21.1', loader: 'Fabric 0.16.10' }),
+    server_create_modpack: async ({ input }) => {
+      if (servers.some((s) => s.info.name === input.name)) throw 'Esiste già un server con questo nome.';
+      await simulateServerCreate(input.name);
+      const name = input.project ? 'Cobblemon Official Modpack' : 'Avventura tra amici';
+      const s: MockServer = {
+        info: { name: input.name, kind: 'fabric', version: '1.21.1', build: null, memoryMb: input.memoryMb, port: input.port, keepRunning: input.keepRunning, autostart: input.autostart, created: now(), running: false, startedAt: null, players: 0, maxPlayers: 20, address: `192.168.1.20:${input.port}`, icon: null, publicAddress: null, loaderVersion: '0.16.10', modpack: { name, project: input.project }, schedule: { restart_at: null, backup_hours: null, keep_backups: 10 } },
+        props: { ...defaultProps(input.port), motd: 'A Minecraft Server' },
+        players: { online: [], ops: [], whitelist: [], banned: [] },
+        console: [],
+        points: [],
+        files: serverFiles('vanilla'),
         plugins: [],
       };
       servers.push(s);
@@ -372,10 +400,44 @@ function serverCommands(): Record<string, (args: Record<string, any>) => unknown
       Object.assign(s.info, update);
       return structuredClone(s.info);
     },
+    server_set_schedule: ({ name, schedule }) => {
+      const s = findServer(name);
+      s.info.schedule = schedule;
+      return structuredClone(s.info);
+    },
     server_set_icon: ({ name, png }) => {
       const s = findServer(name);
       s.info.icon = png;
       return structuredClone(s.info);
+    },
+    // Backup simulati: un elenco per server e per mondo di istanza.
+    server_backups: ({ name }) => structuredClone(mockBackups(`s:${name}`)),
+    server_backup: async ({ name }) => {
+      await new Promise((r) => setTimeout(r, 1200));
+      const b = { file: `${now()}-manual.zip`, created: now(), sizeBytes: 148_000_000, auto: false };
+      mockBackups(`s:${name}`).unshift(b);
+      return b;
+    },
+    server_backup_restore: async ({ name }) => {
+      if (findServer(name).info.running) throw 'Ferma il server prima di ripristinare un backup.';
+      await new Promise((r) => setTimeout(r, 900));
+      return ['world'];
+    },
+    server_backup_delete: ({ name, file }) => {
+      const list = mockBackups(`s:${name}`);
+      list.splice(list.findIndex((b) => b.file === file), 1);
+    },
+    world_backups: ({ name, world }) => structuredClone(mockBackups(`w:${name}/${world}`, 1)),
+    world_backup: async ({ name, world }) => {
+      await new Promise((r) => setTimeout(r, 700));
+      const b = { file: `${now()}-manual.zip`, created: now(), sizeBytes: 12_000_000, auto: false };
+      mockBackups(`w:${name}/${world}`, 1).unshift(b);
+      return b;
+    },
+    world_backup_restore: () => new Promise((r) => setTimeout(r, 600)),
+    world_backup_delete: ({ name, world, file }) => {
+      const list = mockBackups(`w:${name}/${world}`, 1);
+      list.splice(list.findIndex((b) => b.file === file), 1);
     },
     // playit.gg: l'approvazione "arriva" dopo qualche secondo.
     playit_status: () => ({ connected: playitConnected }),
@@ -638,6 +700,15 @@ export const mock = {
 // server-settings, customize, settings, onboarding.
 
 const demo = typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('demo');
+// Demo del dialogo dei crash: l'istanza "si chiude" con una mod mancante.
+if (demo === 'crash') {
+  // Si aspetta che l'interfaccia ascolti gli eventi, poi si "chiude" l'istanza.
+  const wait = setInterval(() => {
+    if (!handlers.get('instance-state')?.size) return;
+    clearInterval(wait);
+    setTimeout(() => emit('instance-state', { instance: 'Sopravvivenza', state: 'stopped', error: null, exitCode: 1, crash: { title: 'Mod mancante o incompatibile', cause: "Mod 'Sodium' (sodium) 0.6.0 requires any version of fabric-api, which is missing!", hint: 'Installa la mod richiesta (o la versione giusta) dalla scheda Mod, oppure disattiva quella che la richiede.', file: 'crash-reports/crash.txt' } }), 600);
+  }, 100);
+}
 if (demo && demo !== 'onboarding') state.settings.setupDone = true;
 
 /** Pagina iniziale della modalità demo, se richiesta. */
@@ -649,6 +720,8 @@ export function demoRoute(): Route | null {
       return { view: 'instance', name: state.instances[0].name };
     case 'server':
       return { view: 'server', name: 'Server degli amici', tab };
+    case 'crash':
+      return { view: 'home' };
     case 'home': case 'library': case 'explore': case 'servers': case 'customize': case 'settings':
       return { view };
     default:

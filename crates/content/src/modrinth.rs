@@ -80,6 +80,8 @@ pub struct SearchQuery {
     pub sort: SearchSort,
     pub offset: u32,
     pub limit: u32,
+    /// Solo progetti che funzionano su un server (mod lato server).
+    pub server_side: bool,
 }
 
 impl SearchQuery {
@@ -93,6 +95,7 @@ impl SearchQuery {
             sort: SearchSort::Relevance,
             offset: 0,
             limit: 20,
+            server_side: false,
         }
     }
 
@@ -137,6 +140,12 @@ impl SearchQuery {
         }
         for category in &self.categories {
             facets.push(vec![format!("categories:{category}")]);
+        }
+        if self.server_side {
+            facets.push(vec![
+                "server_side:required".to_owned(),
+                "server_side:optional".to_owned(),
+            ]);
         }
         serde_json::to_string(&facets).expect("facets are plain strings")
     }

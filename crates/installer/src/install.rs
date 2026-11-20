@@ -307,7 +307,7 @@ impl Installer {
     /// Libreria nel formato dei mod loader (`name` + `url` di un repository
     /// Maven). L'hash viene dal profilo; se manca, dal file `<jar>.sha1`
     /// pubblicato dallo stesso repository. Mai un file senza hash.
-    async fn maven_library_task(
+    pub(crate) async fn maven_library_task(
         &self,
         library: &crate::version::Library,
         libraries_dir: &Path,

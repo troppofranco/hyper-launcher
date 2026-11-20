@@ -13,6 +13,8 @@
   import ServerSettings from '../components/server/ServerSettings.svelte';
   import FileBrowser from '../components/server/FileBrowser.svelte';
   import Plugins from '../components/server/Plugins.svelte';
+  import BackupList from '../components/BackupList.svelte';
+  import Automations from '../components/server/Automations.svelte';
   import DeleteServerDialog from '../components/server/DeleteServerDialog.svelte';
   import PlayitDialog from '../components/server/PlayitDialog.svelte';
   import { copyText, kindLabel, poll, uptime } from '../components/server/util';
@@ -58,6 +60,35 @@
 
   const running = $derived(!!server?.running);
 
+  /** Avvia il gioco con l'istanza del server (creata se manca) ed entra. */
+  let playing = $state(false);
+  async function play() {
+    playing = true;
+    try {
+      const target = await api.serverPlay(name);
+      await app.refreshInstances();
+      await app.play(target.instance, target.join);
+    } catch (e) {
+      app.error(e);
+    } finally {
+      playing = false;
+    }
+  }
+
+  /** Messaggio da incollare in chat per invitare gli amici. */
+  function invite(s: ServerInfo): string {
+    const lines = [
+      t('Vieni a giocare sul mio server Minecraft “{nome}”!', { nome: s.name }),
+      `${t('Indirizzo:')} ${s.publicAddress ?? s.address}${s.publicAddress ? '' : ` ${t('(solo dalla stessa rete di casa)')}`}`,
+      `${t('Versione:')} ${kindLabel({ ...s, modpack: null })}`,
+    ];
+    if (s.modpack) {
+      lines.push(`${t('Modpack:')} ${s.modpack.name}${s.modpack.project ? ` · https://modrinth.com/modpack/${s.modpack.project}` : ''}`);
+    }
+    lines.push(t('In Minecraft: Multigiocatore → Aggiungi server → incolla l’indirizzo.'));
+    return lines.join('\n');
+  }
+
   /**
    * Immagine del server: ritagliata al centro e portata a 64×64, il formato
    * che Minecraft mostra nella lista dei server. Nel gioco vale dal
@@ -83,20 +114,22 @@
   }
 
   // Sezioni della pagina, come le schede di un'istanza.
-  type Tab = 'console' | 'players' | 'plugins' | 'files' | 'settings';
-  const TABS: Tab[] = ['console', 'players', 'plugins', 'files', 'settings'];
+  type Tab = 'console' | 'players' | 'plugins' | 'backups' | 'files' | 'settings';
+  const TABS: Tab[] = ['console', 'players', 'plugins', 'backups', 'files', 'settings'];
   // La scheda iniziale arriva solo dalla modalità demo (screenshot delle release).
   let tab = $state<Tab>(untrack(() => (TABS.includes(initialTab as Tab) ? (initialTab as Tab) : 'console')));
   const tabs = $derived<[Tab, string][]>([
     ['console', t('Console')],
     ['players', running && server?.players ? t('Giocatori · {n}', { n: server.players }) : t('Giocatori')],
     // I plugin esistono solo su Paper.
-    ...(server?.kind === 'paper' ? [['plugins', t('Plugin')] as [Tab, string]] : []),
+    // Plugin su Paper, mod sui server con loader; niente per Vanilla.
+    ...(server?.kind === 'paper' ? [['plugins', t('Plugin')] as [Tab, string]] : server && server.kind !== 'vanilla' ? [['plugins', t('Mod')] as [Tab, string]] : []),
+    ['backups', t('Backup')],
     ['files', t('File')],
     ['settings', t('Impostazioni')],
   ]);
   $effect(() => {
-    if (server && server.kind !== 'paper' && tab === 'plugins') tab = 'console';
+    if (server?.kind === 'vanilla' && tab === 'plugins') tab = 'console';
   });
 </script>
 
@@ -123,17 +156,17 @@
         </div>
         <div class="sub">
           <span class="kind">{kindLabel(server)}</span>
-          <span>{t('Casa:')} <span class="addr">{server.address}</span></span>
-          {#if server.publicAddress}<span>{t('Internet:')} <span class="addr">{server.publicAddress}</span></span>{/if}
+          <span>{t('Casa:')} <button class="addr" title={t('Copia')} onclick={() => copyText(server!.address)}>{server.address}</button></span>
+          {#if server.publicAddress}<span>{t('Internet:')} <button class="addr" title={t('Copia')} onclick={() => copyText(server!.publicAddress!)}>{server.publicAddress}</button></span>{/if}
         </div>
       </div>
       <div class="actions">
         <button class="btn" class:online={!!server.publicAddress} title={t('Gioca con amici fuori casa')} onclick={() => (playitOpen = true)}><Icon name="globe" size={16} /> {server.publicAddress ? t('Internet') : t('Amici fuori casa')}</button>
-        <!-- Con l'accesso da internet attivo si copia l'indirizzo pubblico. -->
-        <button class="btn" title={server.publicAddress ?? server.address} onclick={() => copyText(server!.publicAddress ?? server!.address)}><Icon name="copy" size={16} /> {t('Copia IP')}</button>
+        <button class="btn" title={t('Copia un messaggio con indirizzo, versione e modpack da mandare agli amici')} onclick={() => copyText(invite(server!), t('Invito copiato: incollalo in chat ai tuoi amici.'))}><Icon name="copy" size={16} /> {t('Copia invito')}</button>
         {#if running}
           <button class="btn" disabled={!!busy} onclick={() => act('restart')}><Icon name="refresh" size={16} /> {busy === 'restart' ? t('Riavvio…') : t('Riavvia')}</button>
           <button class="btn danger" disabled={!!busy} onclick={() => act('stop')}>{busy === 'stop' ? t('Spegnimento…') : t('Ferma')}</button>
+          <button class="btn primary" disabled={!!busy || playing} onclick={play}><Icon name="play" size={16} /> {playing ? t('Preparazione…') : t('Gioca')}</button>
         {:else}
           <button class="btn icon-only" disabled={!!busy} aria-label={t('Elimina server')} title={t('Elimina server')} onclick={() => (deleteOpen = true)}><Icon name="trash" size={16} /></button>
           <button class="btn primary" disabled={!!busy} onclick={() => act('start')}><Icon name="play" size={16} /> {busy === 'start' ? t('Avvio…') : t('Avvia')}</button>
@@ -155,11 +188,22 @@
         {:else if tab === 'players'}
           <Players {name} {running} />
         {:else if tab === 'plugins'}
-          <Plugins {name} version={server.version} {running} onrestart={() => act('restart')} />
+          <Plugins {name} kind={server.kind} version={server.version} {running} onrestart={() => act('restart')} />
+        {:else if tab === 'backups'}
+          <BackupList
+            title={t('Backup del mondo')}
+            subtitle={t('Anche a server acceso, senza interrompere il gioco. Gli automatismi sono in Impostazioni.')}
+            load={() => api.serverBackups(name)}
+            create={() => api.serverBackup(name)}
+            restore={(file) => api.serverBackupRestore(name, file)}
+            remove={(file) => api.serverBackupDelete(name, file)}
+            restoreBlocked={running ? t('Per ripristinare un backup ferma prima il server.') : null}
+          />
         {:else if tab === 'files'}
           <FileBrowser {name} {running} />
         {:else}
           <ServerSettings {server} onchanged={refresh} onrestart={() => act('restart')} />
+          <Automations {server} onchanged={(s) => (server = s)} />
         {/if}
       </div>
     {/key}
@@ -195,7 +239,8 @@
   .pill.on::before { background: currentColor; }
   .sub { display: flex; gap: 10px; align-items: center; color: var(--muted); font-size: 13px; flex-wrap: wrap; }
   .kind { font-family: var(--mono); font-size: 12px; padding: 2px 8px; border-radius: 6px; background: var(--surface-2); color: var(--text-2); }
-  .addr { font-family: var(--mono); color: var(--text); user-select: text; }
+  .addr { font-family: var(--mono); font-size: 13px; color: var(--text); border: 0; background: none; padding: 0; cursor: copy; }
+  .addr:hover { color: var(--accent-line); text-decoration: underline; }
 
   .actions { display: flex; gap: 10px; flex-wrap: wrap; }
   .icon-only { width: 44px; padding: 0; }

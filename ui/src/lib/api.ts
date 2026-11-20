@@ -59,7 +59,7 @@ export interface CfFeatured { featured: CfProject[]; popular: CfProject[]; recen
 export interface BlockedFile { name: string; fileName: string; url: string }
 export interface PackImport { instance: Instance; blocked: BlockedFile[] }
 export interface ExportResult { path: string; linked: number; bundled: number }
-export interface SearchInput { text: string; kind: ContentKind; instance: string | null; gameVersion: string | null; loaders: string[]; categories: string[]; sort: SearchSort; offset: number }
+export interface SearchInput { text: string; kind: ContentKind; instance: string | null; gameVersion: string | null; loaders: string[]; categories: string[]; sort: SearchSort; offset: number; /** Solo ciò che funziona su un server. */ serverSide?: boolean }
 export interface World { name: string; lastPlayed: number | null }
 export interface News { title: string; date: string; text: string; image: string | null; url: string }
 export interface AppInfo { version: string; dev: boolean; dataDir: string; curseforge: boolean; windowEffect: boolean }
@@ -111,7 +111,9 @@ export interface InstanceSettings { memoryMb: number | null; javaPath: string | 
 
 export interface ProgressEvent { instance: string; stage: 'libraries' | 'assets' | 'java'; done: number; total: number; downloadedBytes: number }
 export interface LogEvent { instance: string; line: string }
-export interface StateEvent { instance: string; state: 'installing' | 'running' | 'stopped'; error: string | null; exitCode: number | null }
+/** Analisi di un crash: causa probabile in parole semplici e cosa fare. */
+export interface CrashInfo { title: string; cause: string | null; hint: string; file: string | null }
+export interface StateEvent { instance: string; state: 'installing' | 'running' | 'stopped'; error: string | null; exitCode: number | null; crash?: CrashInfo | null }
 export interface ContentProgressEvent { instance: string; done: number; total: number }
 export interface DeviceCodeEvent { userCode: string; verificationUri: string; expiresIn: number }
 
@@ -192,7 +194,8 @@ export const api = {
   news: () => call<News[]>('news'),
   checkUpdate: () => call<UpdateInfo>('check_update'),
   installUpdate: () => call<void>('install_update'),
-  launch: (name: string) => call<void>('launch_instance', { name }),
+  /** Con `join` ("host:porta") il gioco entra subito in quel server. */
+  launch: (name: string, join: string | null = null) => call<void>('launch_instance', { name, join }),
 
   // ---------- Server ospitati ----------
   serverList: () => call<ServerInfo[]>('server_list'),
@@ -200,6 +203,14 @@ export const api = {
   serverVersions: (kind: ServerKind) => call<string[]>('server_versions', { kind }),
   /** Crea, scarica e prepara un server; avanzamento con l'evento `server-progress`. */
   serverCreate: (input: NewServer) => call<ServerInfo>('server_create', { input }),
+  /** Sceglie un .mrpack dal PC (null se si annulla). */
+  serverPickModpack: () => call<PickedModpack | null>('server_pick_modpack'),
+  serverCreateModpack: (input: ModpackServer) => call<ServerInfo>('server_create_modpack', { input }),
+  /** Istanza per giocare nel server (creata se manca) e indirizzo per entrare. */
+  serverPlay: (name: string) => call<{ instance: string; join: string }>('server_play', { name }),
+  serverSetSchedule: (name: string, schedule: ServerSchedule) => call<ServerInfo>('server_set_schedule', { name, schedule }),
+  /** Causa probabile se il server si è fermato con un errore. */
+  serverCrash: (name: string) => call<CrashInfo | null>('server_crash', { name }),
   serverDelete: (name: string) => call<void>('server_delete', { name }),
   serverStart: (name: string) => call<void>('server_start', { name }),
   serverStop: (name: string) => call<void>('server_stop', { name }),
@@ -212,6 +223,16 @@ export const api = {
   serverUpdate: (name: string, update: ServerUpdate) => call<ServerInfo>('server_update', { name, update }),
   /** Imposta (PNG 64×64 in base64) o toglie l'immagine del server. */
   serverSetIcon: (name: string, png: string | null) => call<ServerInfo>('server_set_icon', { name, png }),
+  serverBackups: (name: string) => call<BackupInfo[]>('server_backups', { name }),
+  /** Backup ora (a server acceso senza interrompere il gioco). */
+  serverBackup: (name: string) => call<BackupInfo>('server_backup', { name }),
+  /** Solo a server spento; restituisce le cartelle ripristinate. */
+  serverBackupRestore: (name: string, file: string) => call<string[]>('server_backup_restore', { name, file }),
+  serverBackupDelete: (name: string, file: string) => call<void>('server_backup_delete', { name, file }),
+  worldBackups: (name: string, world: string) => call<BackupInfo[]>('world_backups', { name, world }),
+  worldBackup: (name: string, world: string) => call<BackupInfo>('world_backup', { name, world }),
+  worldBackupRestore: (name: string, world: string, file: string) => call<void>('world_backup_restore', { name, world, file }),
+  worldBackupDelete: (name: string, world: string, file: string) => call<void>('world_backup_delete', { name, world, file }),
   /** playit.gg collegato a questo PC? */
   playitStatus: () => call<{ connected: boolean }>('playit_status'),
   /** Apre il browser per approvare e aspetta (evento `playit-claim`). */
@@ -236,13 +257,19 @@ export const api = {
   serverPluginDelete: (name: string, file: string) => call<void>('server_plugin_delete', { name, file }),
 };
 
-export type ServerKind = 'vanilla' | 'paper';
+export type ServerKind = 'vanilla' | 'paper' | 'fabric' | 'neoforge' | 'forge';
 export interface ServerInfo {
   name: string;
   kind: ServerKind;
   version: string;
   /** Build di Paper (null per Vanilla). */
   build: number | null;
+  /** Versione del loader (Fabric, NeoForge, Forge). */
+  loaderVersion: string | null;
+  /** Modpack di origine, se il server viene da un modpack. */
+  modpack: { name: string; project: string | null } | null;
+  /** Automatismi (eseguiti dall'host). */
+  schedule: ServerSchedule;
   memoryMb: number;
   port: number;
   keepRunning: boolean;
@@ -260,13 +287,20 @@ export interface ServerInfo {
   /** Indirizzo pubblico (playit.gg) se l'accesso da internet è attivo. */
   publicAddress: string | null;
 }
-export interface NewServer { name: string; kind: ServerKind; version: string; memoryMb: number; port: number; keepRunning: boolean; autostart: boolean; eula: boolean }
+/** Automatismi di un server (nomi come nella configurazione). */
+export interface ServerSchedule { restart_at: string | null; backup_hours: number | null; keep_backups: number }
+export interface NewServer { name: string; kind: ServerKind; version: string; memoryMb: number; port: number; keepRunning: boolean; autostart: boolean; eula: boolean; /** Versione del loader; null = l'ultima. */ loaderVersion: string | null }
+/** Server da un modpack: progetto Modrinth oppure file scelto con `serverPickModpack`. */
+export interface ModpackServer { name: string; memoryMb: number; port: number; keepRunning: boolean; autostart: boolean; eula: boolean; project: string | null; file: string | null }
+export interface PickedModpack { path: string; name: string; game: string; loader: string | null }
 export interface ServerUpdate { memoryMb: number; keepRunning: boolean; autostart: boolean }
 export interface ConsoleChunk { lines: string[]; next: number }
 /** Un campione ogni 2 s (ultimi 5 minuti). */
 export interface StatsPoint { t: number; cpu: number; memMb: number; players: number; latencyMs: number | null }
 export interface ServerStats { points: StatsPoint[]; memMaxMb: number; online: string[] }
 export interface ServerFile { name: string; dir: boolean; size: number; modified: number }
+/** Un backup (zip) del mondo di un server o di un'istanza. */
+export interface BackupInfo { file: string; created: number; sizeBytes: number; auto: boolean }
 /** Un plugin nella cartella `plugins/` di un server Paper. */
 export interface ServerPlugin {
   file: string; enabled: boolean; sizeBytes: number;

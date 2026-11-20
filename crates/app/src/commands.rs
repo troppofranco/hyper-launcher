@@ -416,7 +416,7 @@ pub fn open_folder(
                 "game" => instance.game_dir(),
                 "mods" => instance.mods_dir(),
                 "saves" => instance.saves_dir(),
-                "screenshots" | "resourcepacks" | "shaderpacks" => {
+                "screenshots" | "resourcepacks" | "shaderpacks" | "crash-reports" | "logs" => {
                     instance.game_dir().join(&folder)
                 }
                 _ => return Err("Cartella non valida.".into()),

@@ -4,6 +4,7 @@
   import Sidebar from './components/Sidebar.svelte';
   import NewsPanel from './components/NewsPanel.svelte';
   import UpdateDialog from './components/UpdateDialog.svelte';
+  import CrashDialog from './components/CrashDialog.svelte';
   import Toast from './components/Toast.svelte';
   import NewInstanceDialog from './components/NewInstanceDialog.svelte';
   import AddAccountDialog from './components/AddAccountDialog.svelte';
@@ -93,6 +94,7 @@
 {#if app.addAccountOpen}<AddAccountDialog />{/if}
 {#if app.blockedFiles?.length}<BlockedFilesDialog />{/if}
 <UpdateDialog />
+<CrashDialog />
 <Toast />
 
 <style>

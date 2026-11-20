@@ -83,10 +83,13 @@ function points(body) {
 
 // Dal file cambiato alla pagina demo che lo mostra (la prima regola vince).
 const PAGES = [
-  [/server\/Plugins\.svelte|crates\/server\/src\/plugins\.rs/, 'server-plugins', 'Plugin del server'],
+  [/BackupList\.svelte|crates\/server\/src\/backup\.rs|crates\/installer\/src\/backups\.rs/, 'server-backups', 'Backup del server'],
+  [/CrashDialog\.svelte|crates\/instances\/src\/crash\.rs/, 'crash', 'Analisi dei crash'],
+  [/server\/Plugins\.svelte|crates\/server\/src\/plugins\.rs/, 'server-plugins', 'Plugin e mod del server'],
   [/server\/FileBrowser\.svelte|crates\/server\/src\/files\.rs/, 'server-files', 'File del server'],
   [/server\/Players\.svelte|crates\/server\/src\/players\.rs/, 'server-players', 'Giocatori del server'],
-  [/server\/ServerSettings\.svelte|crates\/server\/src\/properties\.rs/, 'server-settings', 'Impostazioni del server'],
+  [/server\/(ServerSettings|Automations)\.svelte|crates\/server\/src\/(properties|schedule)\.rs/, 'server-settings', 'Impostazioni e automatismi del server'],
+  [/server\/NewServerDialog\.svelte/, 'servers', 'Nuovo server'],
   [/views\/Servers\.svelte|server\/NewServerDialog\.svelte/, 'servers', 'Server'],
   [/views\/ServerPage\.svelte|components\/server\/|crates\/server\/|crates\/app\/src\/servers\.rs/, 'server', 'Pagina del server'],
   [/views\/Home\.svelte|components\/widgets\/|lib\/widgets\.ts/, 'home', 'Home'],

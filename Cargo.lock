@@ -2097,6 +2097,7 @@ dependencies = [
 name = "hyper-server"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "hex",
  "hyper-auth",
  "hyper-content",

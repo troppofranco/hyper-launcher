@@ -34,6 +34,11 @@ pub enum Op {
     },
     /// Ferma i server senza "resta acceso" (chiusura del launcher).
     StopUnpinned,
+    /// Backup del mondo (a server acceso sospende il salvataggio).
+    Backup {
+        name: String,
+        auto: bool,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

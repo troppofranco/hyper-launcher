@@ -20,6 +20,8 @@ use crate::{ContentError, ContentKind, Modrinth, Result};
 
 const INDEX: &str = "modrinth.index.json";
 const OVERRIDES: [&str; 2] = ["overrides/", "client-overrides/"];
+/// Override per un server (gli ultimi hanno la precedenza).
+const SERVER_OVERRIDES: [&str; 2] = ["overrides/", "server-overrides/"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -83,7 +85,7 @@ pub fn read_index(pack: &Path) -> Result<PackIndex> {
 }
 
 /// Versione di Minecraft e loader richiesti dal pack.
-fn requirements(index: &PackIndex) -> Result<(String, Option<LoaderSpec>)> {
+pub fn requirements(index: &PackIndex) -> Result<(String, Option<LoaderSpec>)> {
     if index.format_version != 1 || index.game != "minecraft" {
         return Err(ContentError::InvalidPack(format!(
             "unsupported format {} for {}",
@@ -125,11 +127,18 @@ struct PackDownload {
     size: u64,
 }
 
-fn validated_downloads(index: &PackIndex) -> Result<Vec<PackDownload>> {
+/// File da scaricare per un client o (`server`) per un server: si saltano
+/// quelli che il pack dichiara non supportati da quel lato.
+fn validated_downloads(index: &PackIndex, server: bool) -> Result<Vec<PackDownload>> {
     index
         .files
         .iter()
-        .filter(|f| f.env.as_ref().is_none_or(|e| e.client != "unsupported"))
+        .filter(|f| {
+            f.env.as_ref().is_none_or(|e| {
+                let side = if server { &e.server } else { &e.client };
+                side != "unsupported"
+            })
+        })
         .map(|f| {
             // Verifica il percorso prima di creare qualsiasi cosa su disco.
             safe_join(Path::new("."), &f.path)?;
@@ -183,7 +192,7 @@ pub async fn import(
 ) -> Result<Instance> {
     let index = read_index(pack)?;
     let (game, loader) = requirements(&index)?;
-    let downloads = validated_downloads(&index)?;
+    let downloads = validated_downloads(&index, false)?;
 
     let name = manager.unique_name(&folder_name(&index.name))?;
     let instance = manager.create(&name, &game, loader)?;
@@ -220,11 +229,16 @@ pub async fn import(
 /// in `dest`. Ogni nome è non fidato e passa da [`safe_join`].
 fn extract_overrides(pack: &Path, dest: &Path) -> Result<()> {
     let file = std::fs::File::open(pack).map_err(|e| CoreError::io(pack, e))?;
-    extract_overrides_from(file, pack, dest)
+    extract_overrides_from(file, pack, dest, &OVERRIDES)
 }
 
-fn extract_overrides_from<R: Read + Seek>(mut reader: R, origin: &Path, dest: &Path) -> Result<()> {
-    for prefix in OVERRIDES {
+fn extract_overrides_from<R: Read + Seek>(
+    mut reader: R,
+    origin: &Path,
+    dest: &Path,
+    prefixes: &[&str],
+) -> Result<()> {
+    for prefix in prefixes {
         reader.rewind().map_err(|e| CoreError::io(origin, e))?;
         extract_zip_mapped(&mut reader, origin, dest, |name| name.strip_prefix(prefix))?;
     }
@@ -241,6 +255,23 @@ pub async fn install_from_modrinth(
     project: &str,
     progress: Option<ProgressFn<'_>>,
 ) -> Result<Instance> {
+    let path = download_from_modrinth(api, downloader, cache_dir, project).await?;
+    let result = import(manager, downloader, &path, progress).await;
+    let _ = std::fs::remove_file(&path);
+    let instance = result?;
+    project_icon(api, downloader, project, &instance).await;
+    Ok(instance)
+}
+
+/// Scarica in `cache_dir` il `.mrpack` dell'ultima versione di un modpack
+/// Modrinth (verificato con SHA1, solo da host ammessi); chi lo usa poi lo
+/// cancella.
+pub async fn download_from_modrinth(
+    api: &Modrinth,
+    downloader: &Downloader,
+    cache_dir: &Path,
+    project: &str,
+) -> Result<PathBuf> {
     let loaders = ContentKind::Modpack.loaders(None)?;
     let version = preferred(api.versions(project, loaders, &[]).await?).ok_or_else(|| {
         ContentError::NoCompatibleVersion {
@@ -266,11 +297,38 @@ pub async fn install_from_modrinth(
             Some(file.size),
         ))
         .await?;
-    let result = import(manager, downloader, &path, progress).await;
-    let _ = std::fs::remove_file(&path);
-    let instance = result?;
-    project_icon(api, downloader, project, &instance).await;
-    Ok(instance)
+    Ok(path)
+}
+
+/// Prepara un server da un `.mrpack`: scarica in `dest` i file che servono al
+/// server (stesse verifiche dell'import: percorsi sicuri, host ammessi,
+/// SHA1) e copia `overrides/` e `server-overrides/`. Il loader lo installa
+/// chi chiama, da [`requirements`].
+pub async fn install_server_files(
+    downloader: &Downloader,
+    pack: &Path,
+    dest: &Path,
+    progress: Option<ProgressFn<'_>>,
+) -> Result<()> {
+    let index = read_index(pack)?;
+    let tasks = validated_downloads(&index, true)?
+        .into_iter()
+        .map(|d| {
+            Ok(DownloadTask::new(
+                d.url,
+                safe_join(dest, &d.path)?,
+                d.sha1,
+                Some(d.size),
+            ))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    downloader.run(tasks, progress).await?;
+    let (pack, dest) = (pack.to_owned(), dest.to_owned());
+    tokio::task::spawn_blocking(move || {
+        let file = std::fs::File::open(&pack).map_err(|e| CoreError::io(&pack, e))?;
+        extract_overrides_from(file, &pack, &dest, &SERVER_OVERRIDES)
+    })
+    .await?
 }
 
 /// Usa l'icona del progetto Modrinth come immagine della nuova istanza.
@@ -513,7 +571,7 @@ mod tests {
         };
         let good = "https://cdn.modrinth.com/data/x/versions/y/a.jar";
         assert_eq!(
-            validated_downloads(&index(file("mods/a.jar", good)))
+            validated_downloads(&index(file("mods/a.jar", good)), false)
                 .unwrap()
                 .len(),
             1
@@ -526,21 +584,30 @@ mod tests {
             "\\\\srv\\a.jar",
         ] {
             assert!(
-                validated_downloads(&index(file(evil, good))).is_err(),
+                validated_downloads(&index(file(evil, good)), false).is_err(),
                 "{evil}"
             );
         }
         assert!(matches!(
-            validated_downloads(&index(file("mods/a.jar", "https://evil.example/a.jar"))),
+            validated_downloads(
+                &index(file("mods/a.jar", "https://evil.example/a.jar")),
+                false
+            ),
             Err(ContentError::UntrustedUrl(_))
         ));
         let mut bad_hash = file("mods/a.jar", good);
         bad_hash["hashes"]["sha1"] = "nope".into();
-        assert!(validated_downloads(&index(bad_hash)).is_err());
+        assert!(validated_downloads(&index(bad_hash), false).is_err());
         // I file solo-server vengono saltati.
         let mut server = file("mods/s.jar", "https://evil.example/s.jar");
         server["env"] = serde_json::json!({"client": "unsupported", "server": "required"});
-        assert!(validated_downloads(&index(server)).unwrap().is_empty());
+        assert!(
+            validated_downloads(&index(server.clone()), false)
+                .unwrap()
+                .is_empty()
+        );
+        // Per un server invece servono, e l'URL non ammesso viene rifiutato.
+        assert!(validated_downloads(&index(server), true).is_err());
     }
 
     #[test]
@@ -559,7 +626,7 @@ mod tests {
             writer.write_all(b"pwned").unwrap();
             let mut cursor = writer.finish().unwrap();
             cursor.set_position(0);
-            let result = extract_overrides_from(cursor, Path::new("p.mrpack"), &dest);
+            let result = extract_overrides_from(cursor, Path::new("p.mrpack"), &dest, &OVERRIDES);
             assert!(result.is_err(), "{evil} accepted");
             assert!(!dir.path().join("evil.txt").exists());
         }

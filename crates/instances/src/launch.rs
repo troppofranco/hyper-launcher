@@ -138,6 +138,21 @@ fn legacy_jvm_args() -> Vec<&'static str> {
     args
 }
 
+/// Argomenti per entrare subito in un server all'avvio del gioco: Quick Play
+/// (`--quickPlayMultiplayer host:porta`) dalla 1.20, prima `--server` e
+/// `--port`. `host` arriva da un indirizzo scelto dall'utente o dal
+/// launcher: niente spazi, così resta un solo argomento.
+pub fn join_args(game_version: &str, host: &str, port: u16) -> Vec<String> {
+    let host: String = host.chars().filter(|c| !c.is_whitespace()).collect();
+    let quick_play =
+        hyper_installer::loader::compare_versions(game_version, "1.20") != std::cmp::Ordering::Less;
+    if quick_play {
+        vec!["--quickPlayMultiplayer".into(), format!("{host}:{port}")]
+    } else {
+        vec!["--server".into(), host, "--port".into(), port.to_string()]
+    }
+}
+
 pub fn build_command(
     instance: &Instance,
     installed: &InstalledVersion,
@@ -269,6 +284,22 @@ mod tests {
 
     use super::*;
     use crate::InstanceConfig;
+
+    #[test]
+    fn join_uses_quick_play_from_1_20() {
+        assert_eq!(
+            join_args("1.21.4", "localhost", 25565),
+            ["--quickPlayMultiplayer", "localhost:25565"]
+        );
+        assert_eq!(
+            join_args("26.3", "a.b", 1),
+            ["--quickPlayMultiplayer", "a.b:1"]
+        );
+        assert_eq!(
+            join_args("1.19.4", "local host", 25566),
+            ["--server", "localhost", "--port", "25566"]
+        );
+    }
 
     fn installed(json: &str) -> InstalledVersion {
         let version: VersionJson = serde_json::from_str(json).unwrap();

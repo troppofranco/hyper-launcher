@@ -78,6 +78,32 @@ impl Instance {
         self.game_dir().join("saves")
     }
 
+    /// Segna come già vista la schermata "Accessibilità" del primo avvio:
+    /// finché è aperta il gioco non entra da solo in un server (Quick Play).
+    /// Le altre impostazioni restano com'erano.
+    pub fn skip_onboarding(&self) -> Result<()> {
+        const KEY: &str = "onboardAccessibility";
+        let path = self.options_file();
+        let text = std::fs::read_to_string(&path).unwrap_or_default();
+        let mut found = false;
+        let mut lines: Vec<String> = text
+            .lines()
+            .map(|line| match line.split_once(':') {
+                Some((key, _)) if key == KEY => {
+                    found = true;
+                    format!("{KEY}:false")
+                }
+                _ => line.to_owned(),
+            })
+            .collect();
+        if !found {
+            lines.push(format!("{KEY}:false"));
+        }
+        hyper_core::fs::create_dir_all(&self.game_dir())?;
+        hyper_core::fs::write_atomic(&path, format!("{}\n", lines.join("\n")).as_bytes())?;
+        Ok(())
+    }
+
     /// File di contenuto installati, in ordine alfabetico.
     pub fn content_files(&self, dir: ContentDir) -> Vec<ContentFile> {
         let Ok(entries) = std::fs::read_dir(self.content_dir(dir)) else {

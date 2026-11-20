@@ -11,6 +11,7 @@
 //!   sempre dentro la cartella del server (path traversal escluso).
 
 pub mod autostart;
+pub mod backup;
 pub mod client;
 pub mod config;
 mod error;
@@ -22,6 +23,7 @@ pub mod playit;
 pub mod plugins;
 pub mod properties;
 pub mod protocol;
+pub mod schedule;
 
 pub use client::HostClient;
 pub use config::{ServerConfig, ServerKind, ServerManager};
