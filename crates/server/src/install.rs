@@ -51,6 +51,8 @@ pub struct NewServer {
     pub eula: bool,
     /// Versione del loader (Fabric, NeoForge, Forge); `None` = l'ultima.
     pub loader_version: Option<String>,
+    /// Mondo iniziale da uno zip (un backup o un mondo scaricato).
+    pub world: Option<std::path::PathBuf>,
 }
 
 #[derive(Deserialize)]
@@ -273,6 +275,9 @@ pub async fn create(
         props.set("query.port", request.port.to_string());
         props.set("motd", request.name.clone());
         props.save(&dir)?;
+        if let Some(zip) = &request.world {
+            hyper_installer::backups::import_world(zip, &dir, "world")?;
+        }
 
         config.java_component = component;
         manager.save(&config)?;

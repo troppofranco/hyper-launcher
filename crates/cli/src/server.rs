@@ -195,6 +195,7 @@ pub async fn server(app: &App, cmd: ServerCommand) -> Result<()> {
                 autostart: false,
                 eula: true,
                 loader_version: loader,
+                world: None,
             };
             let config = match modpack {
                 None => install::create(&installer, &manager, &request, Some(&report)).await?,

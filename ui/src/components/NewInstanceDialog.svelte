@@ -4,6 +4,8 @@
   import Modal from './Modal.svelte';
   import { LOADERS } from '../lib/content';
   import InstanceIcon from './InstanceIcon.svelte';
+  import IconPicker from './IconPicker.svelte';
+  import Icon from './Icon.svelte';
   import { t } from '../lib/i18n.svelte';
 
   type LoaderChoice = 'vanilla' | LoaderKind;
@@ -18,6 +20,9 @@
   let loaderOk = $state<boolean | null>(null);
   let busy = $state(false);
   let error = $state<string | null>(null);
+  // Immagine scelta (PNG), applicata appena l'istanza è creata.
+  let icon = $state<string | null>(null);
+  let picking = $state(false);
 
   const options = $derived(
     (versions?.versions ?? []).filter((v) => showSnapshots || v.kind === 'release'),
@@ -52,6 +57,7 @@
     error = null;
     try {
       const inst = await api.createInstance({ name: name.trim(), version, loader: loader === 'vanilla' ? null : loader });
+      if (icon) await api.setInstanceIcon(inst.name, icon).catch((e) => app.error(e));
       await app.refreshInstances();
       close();
       app.go({ view: 'instance', name: inst.name });
@@ -67,7 +73,10 @@
 <Modal title={t('Nuova istanza')} onclose={close}>
   <form onsubmit={create} class="form">
     <div class="top">
-      <InstanceIcon name={previewName} size={88} />
+      <button type="button" class="pick" title={t('Scegli un’immagine')} aria-label={t('Scegli un’immagine')} onclick={() => (picking = true)}>
+        <InstanceIcon name={previewName} {icon} size={88} />
+        <span class="pick-overlay"><Icon name="image" size={20} /></span>
+      </button>
       <div class="fields">
         <label class="field">{t('Nome')}
           <input class="input" bind:value={name} placeholder={t('Lascia vuoto per un nome automatico')} maxlength="64" />
@@ -115,7 +124,14 @@
   </form>
 </Modal>
 
+{#if picking}
+  <IconPicker removable={!!icon} onpick={(png) => (icon = png)} onclose={() => (picking = false)} />
+{/if}
+
 <style>
+  .pick { position: relative; flex: none; padding: 0; border: 0; background: none; border-radius: 20px; display: block; }
+  .pick-overlay { position: absolute; inset: 0; border-radius: 20px; background: rgba(8, 9, 12, .5); color: #fff; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity .18s ease; }
+  .pick:hover .pick-overlay, .pick:focus-visible .pick-overlay { opacity: 1; }
   .form { display: flex; flex-direction: column; gap: 18px; }
   .top { display: flex; gap: 16px; align-items: flex-start; }
   .fields { flex: 1; display: flex; flex-direction: column; gap: 14px; min-width: 0; }

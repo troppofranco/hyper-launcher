@@ -7,7 +7,7 @@
   <span class="strong">{t(label)}</span>
   <div class="seg" role="radiogroup" aria-label={t(label)}>
     {#each options as [id, text] (id)}
-      <button role="radio" aria-checked={value === id} class:on={value === id} onclick={() => (value = id)}>{t(text)}</button>
+      <button type="button" role="radio" aria-checked={value === id} class:on={value === id} onclick={() => (value = id)}>{t(text)}</button>
     {/each}
   </div>
 </div>

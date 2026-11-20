@@ -12,6 +12,7 @@
     minimize: 'M5 12h14',
     maximize: 'M5 5h14v14H5z',
     back: 'M15 18l-6-6 6-6',
+    chevron: 'M9 6l6 6-6 6',
     logout: 'M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3',
     check: 'M5 12l5 5L20 7',
     refresh: 'M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5',

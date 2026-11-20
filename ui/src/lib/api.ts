@@ -185,6 +185,8 @@ export const api = {
   packExport: (instance: string) => call<ExportResult | null>('pack_export', { instance }),
   listWorlds: (name: string) => call<World[]>('list_worlds', { name }),
   setInstanceIcon: (name: string, png: string | null) => call<Instance>('set_instance_icon', { name, png }),
+  /** Texture di alcuni blocchi dal gioco già scaricato (vuoto se nessuno). */
+  blockIcons: () => call<{ name: string; image: string }[]>('block_icons'),
   listSkins: () => call<Skins>('list_skins'),
   defaultSkins: () => call<Skin[]>('default_skins'),
   addSkin: (name: string, png: string, slim: boolean) => call<Skins>('add_skin', { name, png, slim }),
@@ -209,6 +211,10 @@ export const api = {
   serverCreate: (input: NewServer) => call<ServerInfo>('server_create', { input }),
   /** Sceglie un .mrpack dal PC (null se si annulla). */
   serverPickModpack: () => call<PickedModpack | null>('server_pick_modpack'),
+  /** Tutti i backup dei server, dal più recente (per creare un server da un backup). */
+  serverAllBackups: () => call<(BackupInfo & { server: string })[]>('server_all_backups'),
+  /** Sceglie lo zip di un mondo dal PC (null se si annulla). */
+  serverPickWorld: () => call<string | null>('server_pick_world'),
   serverCreateModpack: (input: ModpackServer) => call<ServerInfo>('server_create_modpack', { input }),
   /** Istanza per giocare nel server (creata se manca) e indirizzo per entrare. */
   serverPlay: (name: string) => call<{ instance: string; join: string }>('server_play', { name }),
@@ -293,9 +299,11 @@ export interface ServerInfo {
 }
 /** Automatismi di un server (nomi come nella configurazione). */
 export interface ServerSchedule { restart_at: string | null; backup_hours: number | null; keep_backups: number }
-export interface NewServer { name: string; kind: ServerKind; version: string; memoryMb: number; port: number; keepRunning: boolean; autostart: boolean; eula: boolean; /** Versione del loader; null = l'ultima. */ loaderVersion: string | null }
+export interface NewServer { name: string; kind: ServerKind; version: string; memoryMb: number; port: number; keepRunning: boolean; autostart: boolean; eula: boolean; /** Versione del loader; null = l'ultima. */ loaderVersion: string | null; world?: WorldSource | null }
+/** Mondo iniziale di un nuovo server: un backup del launcher o uno zip dal PC. */
+export interface WorldSource { server: string | null; file: string | null; path: string | null }
 /** Server da un modpack: progetto Modrinth oppure file scelto con `serverPickModpack`. */
-export interface ModpackServer { name: string; memoryMb: number; port: number; keepRunning: boolean; autostart: boolean; eula: boolean; project: string | null; file: string | null }
+export interface ModpackServer { name: string; memoryMb: number; port: number; keepRunning: boolean; autostart: boolean; eula: boolean; project: string | null; file: string | null; world?: WorldSource | null }
 export interface PickedModpack { path: string; name: string; game: string; loader: string | null }
 export interface ServerUpdate { memoryMb: number; keepRunning: boolean; autostart: boolean }
 export interface ConsoleChunk { lines: string[]; next: number }

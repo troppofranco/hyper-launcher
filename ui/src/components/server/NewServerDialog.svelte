@@ -1,12 +1,13 @@
 <script lang="ts">
   // Creazione guidata di un server in tre passi: tipo e versione, risorse,
   // EULA di Mojang. Durante la creazione mostra l'avanzamento del download.
-  import { api, on, type SearchHit, type ServerInfo, type ServerKind, type ServerProgressEvent } from '../../lib/api';
+  import { api, on, type BackupInfo, type SearchHit, type ServerInfo, type ServerKind, type ServerProgressEvent, type WorldSource } from '../../lib/api';
   import { app } from '../../lib/store.svelte';
   import { t } from '../../lib/i18n.svelte';
   import Modal from '../Modal.svelte';
   import ProgressBar from '../ProgressBar.svelte';
   import Toggle from '../controls/Toggle.svelte';
+  import Segmented from '../controls/Segmented.svelte';
   import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import { moving, ms } from '../../lib/motion.svelte';
@@ -73,10 +74,16 @@
     : taken(trimmed) ? t('Esiste già un server con questo nome.')
     : null,
   );
+  // Mondo iniziale: nuovo, da un backup di un server o da uno zip dal PC.
+  let worldMode = $state<'new' | 'backup' | 'file'>('new');
+  let backups = $state<(BackupInfo & { server: string })[] | null>(null);
+  let backupKey = $state('');
+  let worldFile = $state<string | null>(null);
   const portClash = $derived(existing.find((s) => s.port === port) ?? null);
   const portOk = $derived(Number.isInteger(port) && port >= 1024 && port <= 65535);
   const typeReady = $derived(kind === 'modpack' ? !!pack : !!version && (!loaderKind || !!loaderVersion));
-  const canNext = $derived(step === 0 ? !nameError && typeReady : step === 1 ? portOk && !portClash : eula);
+  const worldReady = $derived(worldMode === 'new' || (worldMode === 'backup' ? !!backupKey : !!worldFile));
+  const canNext = $derived(step === 0 ? !nameError && typeReady && worldReady : step === 1 ? portOk && !portClash : eula);
   /** "Fabric 1.21.4 · 0.16.10", "Paper 1.21.4", "Cobblemon (modpack)". */
   const summary = $derived(kind === 'modpack'
     ? `${pack?.name ?? ''}${pack?.detail ? ` · ${pack.detail}` : ''}`
@@ -121,6 +128,34 @@
     memoryGb = kind === 'modpack' ? 6 : loaderKind ? 5 : 4;
   });
 
+  const world = $derived<WorldSource | null>(
+    worldMode === 'backup' && backupKey
+      ? { server: backupKey.split('|')[0], file: backupKey.split('|')[1], path: null }
+      : worldMode === 'file' && worldFile
+        ? { server: null, file: null, path: worldFile }
+        : null,
+  );
+
+  $effect(() => {
+    if (worldMode !== 'backup' || backups) return;
+    api.serverAllBackups()
+      .then((list) => { backups = list; backupKey = list[0] ? `${list[0].server}|${list[0].file}` : ''; })
+      .catch((e) => { backups = []; app.error(e); });
+  });
+
+  async function pickWorld() {
+    try {
+      const path = await api.serverPickWorld();
+      if (path) worldFile = path;
+    } catch (e) {
+      app.error(e);
+    }
+  }
+
+  const fileName = (p: string) => p.split(/[\\/]/).pop() ?? p;
+  const backupLabel = (b: BackupInfo & { server: string }) =>
+    `${b.server} · ${new Date(b.created * 1000).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}`;
+
   async function pickFile() {
     try {
       const p = await api.serverPickModpack();
@@ -158,7 +193,7 @@
     error = null;
     progress = null;
     try {
-      const common = { name: trimmed, memoryMb: memoryGb * 1024, port, keepRunning, autostart, eula };
+      const common = { name: trimmed, memoryMb: memoryGb * 1024, port, keepRunning, autostart, eula, world };
       const s = kind === 'modpack'
         ? await api.serverCreateModpack({ ...common, project: pack?.project ?? null, file: pack?.file ?? null })
         : await api.serverCreate({ ...common, kind, version, loaderVersion: loaderKind ? loaderVersion : null });
@@ -245,6 +280,24 @@
             <input class="input" bind:value={name} maxlength="32" autocomplete="off" aria-invalid={!!nameError} />
             {#if nameError}<span class="warn">{nameError}</span>{:else}<span class="hint">{t('Lettere, numeri, spazi, - e _ (massimo 32).')}</span>{/if}
           </label>
+          <Segmented bind:value={worldMode} label="Mondo" options={[['new', 'Nuovo mondo'], ['backup', 'Da un backup'], ['file', 'Da file .zip']]} />
+          {#if worldMode === 'backup'}
+            {#if backups === null}
+              <span class="hint">{t('Lettura dei backup…')}</span>
+            {:else if !backups.length}
+              <span class="warn">{t('Nessun backup dei server: fanne uno dalla scheda Backup di un server.')}</span>
+            {:else}
+              <select class="input" bind:value={backupKey} aria-label={t('Backup da usare')}>
+                {#each backups as b (`${b.server}|${b.file}`)}<option value={`${b.server}|${b.file}`}>{backupLabel(b)}</option>{/each}
+              </select>
+              <span class="hint">{t('Il nuovo server parte con una copia di quel mondo; l’originale non cambia.')}</span>
+            {/if}
+          {:else if worldMode === 'file'}
+            <div class="pack-tools">
+              <button type="button" class="btn" onclick={pickWorld}>{t('Scegli file .zip')}</button>
+              <span class="hint file-name">{worldFile ? fileName(worldFile) : t('Uno zip con dentro un mondo (la cartella con level.dat), anche dal giocatore singolo.')}</span>
+            </div>
+          {/if}
         {:else if step === 1}
           <div class="summary">
             <span class="letter">{LABELS[kind][0]}</span>
@@ -316,6 +369,7 @@
   .pack { display: flex; flex-direction: column; gap: 10px; }
   .pack-tools { display: flex; gap: 10px; }
   .grow { flex: 1; min-width: 0; }
+  .file-name { align-self: center; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pack-list { display: flex; flex-direction: column; gap: 6px; max-height: 170px; overflow-y: auto; }
   .pack-item { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 9px 12px; text-align: left; border-radius: var(--radius-sm); border: 1px solid var(--line); background: var(--panel); }
   .pack-item .small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }

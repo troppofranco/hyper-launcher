@@ -222,6 +222,83 @@ pub fn restore(dir: &Path, file: &str, dest: &Path, allowed: &[String]) -> Resul
     Ok(restored)
 }
 
+/// Mette in `dest` il mondo contenuto in uno zip, come cartella `level`
+/// (più `level_nether` e `level_the_end` se lo zip le ha). Accetta:
+/// - i backup del launcher (`world/…`, `world_nether/…`) o di un mondo di
+///   un'istanza (`Nome del mondo/…`);
+/// - i mondi scaricati con `level.dat` direttamente nella radice dello zip.
+///
+/// Ogni voce passa da `safe_join`; si estrae in una cartella temporanea e
+/// solo alla fine si sposta. Le cartelle di destinazione non devono esistere.
+pub fn import_world(zip_path: &Path, dest: &Path, level: &str) -> Result<()> {
+    safe_component(level)?;
+    let names: Vec<String> = {
+        let file =
+            std::fs::File::open(zip_path).map_err(|e| hyper_core::CoreError::io(zip_path, e))?;
+        let archive = zip::ZipArchive::new(file).map_err(zip_err(zip_path))?;
+        archive
+            .file_names()
+            .filter_map(|n| n.ok().map(|n| n.replace('\\', "/")))
+            .collect()
+    };
+    let not_a_world = || {
+        InstallerError::Core(hyper_core::CoreError::UnsafePath(
+            "lo zip non contiene un mondo di Minecraft (level.dat)".into(),
+        ))
+    };
+    let tmp = dest.join(RESTORE_TMP);
+    fs::remove_dir_all_if_exists(&tmp)?;
+    let open = || std::fs::File::open(zip_path).map_err(|e| hyper_core::CoreError::io(zip_path, e));
+    // (cartella nello zip estratta in tmp, nome finale): `None` = la radice.
+    let mut moves: Vec<(Option<String>, String)> = Vec::new();
+    if names.iter().any(|n| n == "level.dat") {
+        crate::natives::extract_zip_mapped(open()?, zip_path, &tmp.join("root"), |n| Some(n))?;
+        moves.push((None, level.to_owned()));
+    } else {
+        let worlds: Vec<String> = names
+            .iter()
+            .filter_map(|n| n.strip_suffix("/level.dat"))
+            .filter(|top| !top.contains('/'))
+            .map(str::to_owned)
+            .collect();
+        let main = worlds
+            .iter()
+            .find(|w| !w.ends_with("_nether") && !w.ends_with("_the_end"))
+            .or_else(|| worlds.first())
+            .cloned()
+            .ok_or_else(not_a_world)?;
+        for (suffix, target) in [
+            ("", level.to_owned()),
+            ("_nether", format!("{level}_nether")),
+            ("_the_end", format!("{level}_the_end")),
+        ] {
+            let top = format!("{main}{suffix}");
+            if names.iter().any(|n| n.starts_with(&format!("{top}/"))) {
+                moves.push((Some(top), target));
+            }
+        }
+        let tops: Vec<String> = moves.iter().filter_map(|(t, _)| t.clone()).collect();
+        crate::natives::extract_zip_mapped(open()?, zip_path, &tmp, |name| {
+            let top = name.split('/').next()?;
+            tops.iter().any(|t| t == top).then_some(name)
+        })?;
+    }
+    for (from, to) in &moves {
+        let source = match from {
+            Some(top) => hyper_core::safe_join(&tmp, top)?,
+            None => tmp.join("root"),
+        };
+        let target = dest.join(safe_component(to)?);
+        if target.exists() {
+            let _ = fs::remove_dir_all_if_exists(&tmp);
+            return Err(hyper_core::CoreError::UnsafePath(format!("{to} esiste già")).into());
+        }
+        std::fs::rename(&source, &target).map_err(|e| hyper_core::CoreError::io(&source, e))?;
+    }
+    fs::remove_dir_all_if_exists(&tmp)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -272,6 +349,58 @@ mod tests {
         assert_eq!(list(&backups).len(), 4);
         assert_eq!(prune(&backups, 2).unwrap(), 2);
         assert_eq!(list(&backups).len(), 2);
+    }
+
+    fn zip_with(path: &Path, files: &[&str]) {
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
+        for name in files {
+            zip.start_file(*name, SimpleFileOptions::default()).unwrap();
+            zip.write_all(b"x").unwrap();
+        }
+        zip.finish().unwrap();
+    }
+
+    #[test]
+    fn imports_worlds_from_different_zips() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Backup del launcher di un server: world + nether.
+        let a = tmp.path().join("a.zip");
+        zip_with(
+            &a,
+            &[
+                "world/level.dat",
+                "world/region/r.0.0.mca",
+                "world_nether/DIM-1/x",
+            ],
+        );
+        let dest = tmp.path().join("srv1");
+        std::fs::create_dir_all(&dest).unwrap();
+        import_world(&a, &dest, "world").unwrap();
+        assert!(dest.join("world/level.dat").is_file());
+        assert!(dest.join("world_nether/DIM-1/x").is_file());
+        // Mondo di un'istanza: cartella con il suo nome, rinominata.
+        let b = tmp.path().join("b.zip");
+        zip_with(&b, &["Il mio mondo/level.dat", "Il mio mondo/DIM1/y"]);
+        let dest = tmp.path().join("srv2");
+        std::fs::create_dir_all(&dest).unwrap();
+        import_world(&b, &dest, "world").unwrap();
+        assert!(dest.join("world/DIM1/y").is_file());
+        // Mondo scaricato: level.dat nella radice.
+        let c = tmp.path().join("c.zip");
+        zip_with(&c, &["level.dat", "region/r.0.0.mca"]);
+        let dest = tmp.path().join("srv3");
+        std::fs::create_dir_all(&dest).unwrap();
+        import_world(&c, &dest, "world").unwrap();
+        assert!(dest.join("world/region/r.0.0.mca").is_file());
+        assert!(!dest.join(RESTORE_TMP).exists());
+        // Niente level.dat: rifiutato; e niente fuga con `../`.
+        let d = tmp.path().join("d.zip");
+        zip_with(&d, &["readme.txt"]);
+        assert!(import_world(&d, &dest, "w2").is_err());
+        let e = tmp.path().join("e.zip");
+        zip_with(&e, &["level.dat", "../evil.txt"]);
+        assert!(import_world(&e, &tmp.path().join("srv4"), "world").is_err());
+        assert!(!tmp.path().join("evil.txt").exists());
     }
 
     #[test]

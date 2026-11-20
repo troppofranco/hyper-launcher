@@ -167,6 +167,93 @@ pub struct NewServerInput {
     /// Versione del loader (Fabric, NeoForge, Forge); assente = l'ultima.
     #[serde(default)]
     pub loader_version: Option<String>,
+    /// Mondo iniziale da un backup (di un server del launcher o un file).
+    #[serde(default)]
+    pub world: Option<WorldSource>,
+}
+/// Da dove prendere il mondo di un nuovo server.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorldSource {
+    /// Backup di un server del launcher (nome del server e del file)…
+    pub server: Option<String>,
+    pub file: Option<String>,
+    /// …oppure uno zip scelto con `server_pick_world`.
+    pub path: Option<String>,
+}
+
+/// Percorso dello zip del mondo; i backup del launcher si cercano per nome
+/// tra quelli esistenti (niente percorsi arbitrari dai nomi).
+fn world_zip(
+    state: &AppState,
+    source: Option<&WorldSource>,
+) -> CmdResult<Option<std::path::PathBuf>> {
+    let Some(source) = source else {
+        return Ok(None);
+    };
+    match (&source.server, &source.file, &source.path) {
+        (Some(server), Some(file), _) => {
+            let exists = hyper_server::backup::list(&state.paths, server)
+                .cmd()?
+                .iter()
+                .any(|b| &b.file == file);
+            if !exists {
+                return Err("Backup non trovato.".into());
+            }
+            Ok(Some(
+                hyper_server::backup::dir(&state.paths, server)
+                    .cmd()?
+                    .join(file),
+            ))
+        }
+        (_, _, Some(path)) => Ok(Some(std::path::PathBuf::from(path))),
+        _ => Ok(None),
+    }
+}
+
+/// Un backup di un server, per sceglierlo come mondo di un nuovo server.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnyBackup {
+    pub server: String,
+    #[serde(flatten)]
+    pub info: hyper_installer::backups::BackupInfo,
+}
+
+/// Tutti i backup dei server del launcher, dal più recente.
+#[tauri::command]
+pub fn server_all_backups(state: State<'_, AppState>) -> CmdResult<Vec<AnyBackup>> {
+    let mut all: Vec<AnyBackup> = manager(&state)
+        .list()
+        .into_iter()
+        .flat_map(|c| {
+            hyper_server::backup::list(&state.paths, &c.name)
+                .unwrap_or_default()
+                .into_iter()
+                .map(move |info| AnyBackup {
+                    server: c.name.clone(),
+                    info,
+                })
+        })
+        .collect();
+    all.sort_by_key(|b| std::cmp::Reverse(b.info.created));
+    Ok(all)
+}
+
+/// Fa scegliere lo zip di un mondo (un backup o un mondo scaricato).
+#[tauri::command]
+pub async fn server_pick_world(app: AppHandle) -> CmdResult<Option<String>> {
+    use tauri_plugin_dialog::DialogExt;
+    let picked = app
+        .dialog()
+        .file()
+        .set_title("Scegli il mondo (zip)")
+        .add_filter("Mondo di Minecraft", &["zip"])
+        .blocking_pick_file();
+    Ok(match picked {
+        Some(file) => Some(file.into_path().cmd()?.display().to_string()),
+        None => None,
+    })
 }
 
 #[derive(Clone, Serialize)]
@@ -194,6 +281,7 @@ pub async fn server_create(
         autostart: input.autostart,
         eula: input.eula,
         loader_version: input.loader_version,
+        world: world_zip(&state, input.world.as_ref())?,
     };
     let report = |stage: CreateStage, done: usize, total: usize| {
         let _ = app.emit(
@@ -266,6 +354,9 @@ pub struct ModpackServerInput {
     pub project: Option<String>,
     /// …un `.mrpack` scelto con `server_pick_modpack`.
     pub file: Option<String>,
+    /// Mondo iniziale da un backup.
+    #[serde(default)]
+    pub world: Option<WorldSource>,
 }
 
 /// Crea un server da un modpack (Modrinth o file `.mrpack`): loader,
@@ -307,6 +398,7 @@ pub async fn server_create_modpack(
         autostart: input.autostart,
         eula: input.eula,
         loader_version: None,
+        world: world_zip(&state, input.world.as_ref())?,
     };
     let report = |stage: CreateStage, done: usize, total: usize| {
         let _ = app.emit(

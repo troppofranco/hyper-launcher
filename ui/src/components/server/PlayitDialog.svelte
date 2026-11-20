@@ -21,6 +21,9 @@
   let stage = $state<PlayitProgressEvent['stage'] | null>(null);
   let enabling = $state(false);
   let busy = $state(false);
+  /** Ultimo errore, mostrato nel passo con "Riprova" (oltre al messaggio). */
+  let failure = $state<{ step: 1 | 2; message: string } | null>(null);
+  let guide = $state(false);
 
   $effect(() => {
     api.playitStatus().then((s) => (connected = s.connected)).catch((e) => app.error(e));
@@ -38,11 +41,12 @@
   async function connect() {
     connecting = true;
     claim = null;
+    failure = null;
     try {
       await api.playitConnect();
       connected = true;
     } catch (e) {
-      app.error(e);
+      failure = { step: 1, message: String(e) };
     } finally {
       connecting = false;
     }
@@ -51,10 +55,11 @@
   async function enable() {
     enabling = true;
     stage = null;
+    failure = null;
     try {
       onchanged(await api.serverPlayitEnable(server.name));
     } catch (e) {
-      app.error(e);
+      failure = { step: 2, message: String(e) };
     } finally {
       enabling = false;
     }
@@ -101,6 +106,9 @@
               <span class="muted small">{t('Collegato a questo PC.')}</span>
             {:else if connecting}
               <span class="small live">{t(claim ? claimText[claim] : 'Apro il browser…')}</span>
+            {:else if failure?.step === 1}
+              <span class="small warn">{failure.message}</span>
+              <button class="btn primary small" onclick={connect}>{t('Riprova')}</button>
             {:else}
               <span class="muted small">{t('Si apre il browser: accedi e approva Hyper Launcher. Serve una volta sola per tutti i server.')}</span>
               <button class="btn primary small" onclick={connect}><Icon name="external" size={14} /> {t('Collega')}</button>
@@ -113,6 +121,10 @@
             <strong>{t('Attiva l’accesso da internet')}</strong>
             {#if enabling}
               <span class="small live">{t(stage ? stageText[stage] : 'Avvio…')}</span>
+            {:else if failure?.step === 2}
+              <span class="small warn">{failure.message}</span>
+              <span class="muted small">{t('Il lavoro già fatto non si perde: riprovando si riparte da dove si era fermato.')}</span>
+              <button class="btn primary small" onclick={enable}>{t('Riprova')}</button>
             {:else}
               <span class="muted small">{t('Crea un tunnel Minecraft Java verso la porta {port} del server.', { port: server.port })}</span>
               {#if step === 2}<button class="btn primary small" onclick={enable}><Icon name="globe" size={14} /> {t('Attiva')}</button>{/if}
@@ -136,6 +148,30 @@
         <button class="btn small danger" disabled={busy} onclick={() => act(async () => { await api.playitDisconnect(); connected = false; onchanged({ ...server, publicAddress: null }); })}>{t('Scollega playit.gg')}</button>
       </div>
     {/if}
+
+    <section class="guide">
+      <button type="button" class="guide-head" aria-expanded={guide} onclick={() => (guide = !guide)}>
+        <span class="chev" class:open={guide}><Icon name="chevron" size={14} /></span> {t('Guida passo passo')}
+      </button>
+      {#if guide}
+        <ol class="howto">
+          <li><strong>{t('Crea un account playit.gg')}</strong> <span>{t('È gratis: basta un’email (o l’accesso con Google). Puoi farlo anche durante il collegamento, nella pagina che si apre.')}</span></li>
+          <li><strong>{t('Collega il launcher')}</strong> <span>{t('Premi “Collega”: nel browser accedi e premi “Approva”. Il launcher salva la chiave solo nel portachiavi di Windows di questo PC.')}</span></li>
+          <li><strong>{t('Attiva l’accesso da internet')}</strong> <span>{t('Premi “Attiva”: il launcher scarica il programma ufficiale di playit (verificato), crea il tunnel e aspetta l’indirizzo. Può volerci un paio di minuti la prima volta.')}</span></li>
+          <li><strong>{t('Avvia il server')}</strong> <span>{t('Il tunnel funziona solo a server acceso. Se il server resta acceso a launcher chiuso, anche il tunnel resta attivo.')}</span></li>
+          <li><strong>{t('Condividi l’indirizzo')}</strong> <span>{t('Gli amici aprono Minecraft → Multigiocatore → Aggiungi server e incollano l’indirizzo (es. nome.joinmc.link). Devono avere la stessa versione del gioco.')}</span></li>
+        </ol>
+        <h4>{t('Se qualcosa non va')}</h4>
+        <ul class="howto tips">
+          <li>{t('Si è fermato con un errore? Premi “Riprova”: il launcher riprova già da solo gli intoppi di rete, e il tunnel creato non va perso.')}</li>
+          <li>{t('Gli amici non entrano? Controlla che il server sia acceso e aspetta un minuto dopo l’avvio: il tunnel si collega poco dopo il server.')}</li>
+          <li>{t('“Collegamento non più valido”? L’agent è stato eliminato dal sito di playit: premi di nuovo “Collega”.')}</li>
+          <li>{t('L’antivirus blocca playit? Consenti “playitd.exe” nella cartella del launcher.')}</li>
+          <li>{t('I tunnel e gli agent si vedono (e si possono eliminare) anche dal sito playit.gg, nella sezione Agents.')}</li>
+        </ul>
+        <button type="button" class="btn small link-btn" onclick={() => api.openUrl('https://playit.gg/account/agents')}><Icon name="external" size={14} /> {t('Apri playit.gg')}</button>
+      {/if}
+    </section>
   </div>
 </Modal>
 
@@ -156,5 +192,16 @@
   .addr-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
   .addr { flex: 1; min-width: 0; font-family: var(--mono); font-size: 15px; color: var(--text); user-select: text; overflow-wrap: anywhere; }
   .ready p { margin: 0; }
+  .warn { color: var(--warn-text); overflow-wrap: anywhere; }
+  .guide { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .guide-head { display: flex; align-items: center; gap: 6px; align-self: flex-start; background: none; border: 0; padding: 0; color: var(--text-2); font-weight: 600; font-size: 13px; }
+  .guide-head:hover { color: var(--text); }
+  .chev { display: flex; transition: transform .2s ease; }
+  .chev.open { transform: rotate(90deg); }
+  .howto { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; line-height: 1.5; color: var(--text-2); }
+  .howto strong { color: var(--text); }
+  .tips { list-style: disc; }
+  h4 { margin: 4px 0 0; font-size: 13px; font-weight: 600; }
+  .link-btn { align-self: flex-start; }
   .manage { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
 </style>

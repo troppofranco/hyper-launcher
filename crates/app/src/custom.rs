@@ -42,6 +42,94 @@ pub fn set_instance_icon(
     Ok(InstanceView::new(&instance))
 }
 
+/// Blocchi proposti come immagine di un'istanza (nomi delle texture di
+/// Minecraft 1.13+).
+const BLOCKS: &[&str] = &[
+    "grass_block_side",
+    "dirt",
+    "stone",
+    "cobblestone",
+    "oak_planks",
+    "oak_log",
+    "bricks",
+    "sand",
+    "gravel",
+    "crafting_table_front",
+    "furnace_front",
+    "bookshelf",
+    "tnt_side",
+    "diamond_ore",
+    "diamond_block",
+    "gold_block",
+    "emerald_block",
+    "redstone_block",
+    "lapis_block",
+    "glowstone",
+    "netherrack",
+    "obsidian",
+    "end_stone",
+    "pumpkin_side",
+];
+
+#[derive(Serialize)]
+pub struct BlockIcon {
+    pub name: String,
+    /// Texture 16×16 come `data:` URL (l'interfaccia la ingrandisce a pixel).
+    pub image: String,
+}
+
+/// Texture di alcuni blocchi, lette dal jar del gioco già scaricato sul PC
+/// (il più recente in `versions/`): il launcher non ne distribuisce copie.
+/// Vuoto se nessuna versione è ancora stata scaricata.
+#[tauri::command]
+pub async fn block_icons(state: State<'_, AppState>) -> CmdResult<Vec<BlockIcon>> {
+    let versions = state.paths.versions_dir();
+    tauri::async_runtime::spawn_blocking(move || {
+        // Jar dei client vanilla: `versions/<id>/<id>.jar`, il più recente.
+        let newest = std::fs::read_dir(&versions)
+            .ok()
+            .into_iter()
+            .flat_map(|d| d.flatten())
+            .filter_map(|e| {
+                let id = e.file_name().into_string().ok()?;
+                let jar = e.path().join(format!("{id}.jar"));
+                let modified = std::fs::metadata(&jar).ok()?.modified().ok()?;
+                Some((modified, jar))
+            })
+            .max_by_key(|(m, _)| *m)
+            .map(|(_, jar)| jar);
+        let Some(jar) = newest else {
+            return Vec::new();
+        };
+        let Ok(file) = std::fs::File::open(&jar) else {
+            return Vec::new();
+        };
+        let Ok(mut archive) = zip::ZipArchive::new(file) else {
+            return Vec::new();
+        };
+        BLOCKS
+            .iter()
+            .filter_map(|name| {
+                let mut entry = archive
+                    .by_name(&format!("assets/minecraft/textures/block/{name}.png"))
+                    .ok()?;
+                // Una texture di blocco pesa pochi KB.
+                if entry.size() > 64 * 1024 {
+                    return None;
+                }
+                let mut bytes = Vec::new();
+                std::io::Read::read_to_end(&mut entry, &mut bytes).ok()?;
+                Some(BlockIcon {
+                    name: (*name).to_owned(),
+                    image: data_url("image/png", &bytes),
+                })
+            })
+            .collect()
+    })
+    .await
+    .cmd()
+}
+
 // ---------- Skin ----------
 
 #[derive(Serialize)]

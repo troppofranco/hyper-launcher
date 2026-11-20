@@ -9,7 +9,7 @@
   import DeleteInstanceDialog from '../components/DeleteInstanceDialog.svelte';
   import ContentList from '../components/ContentList.svelte';
   import BackupList from '../components/BackupList.svelte';
-  import { pickFile, squarePng } from '../lib/image';
+  import IconPicker from '../components/IconPicker.svelte';
   import { t } from '../lib/i18n.svelte';
 
   let { name }: { name: string } = $props();
@@ -71,14 +71,10 @@
     }
   }
 
-  async function pickIcon() {
-    const file = await pickFile('image/png,image/jpeg,image/webp,image/gif');
-    if (!file) return;
-    try {
-      await setIcon(await squarePng(file));
-    } catch (e) {
-      app.error(e);
-    }
+  // Blocchi di Minecraft o immagine dal PC.
+  let picking = $state(false);
+  function pickIcon() {
+    picking = true;
   }
 
   async function exportPack() {
@@ -232,6 +228,9 @@
 
   {#if deleteOpen}
     <DeleteInstanceDialog {name} onclose={() => (deleteOpen = false)} ondeleted={() => app.go({ view: 'library' })} />
+  {/if}
+  {#if picking}
+    <IconPicker removable={!!inst.icon} onpick={(png) => setIcon(png)} onclose={() => (picking = false)} />
   {/if}
 {/if}
 

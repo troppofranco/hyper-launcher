@@ -37,7 +37,7 @@ fn keyring_key() -> String {
 /// Per quanto si aspetta che l'utente approvi nel browser.
 const CLAIM_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 /// Quanto può metterci un agent appena avviato a presentarsi a playit.
-const AGENT_STARTUP: Duration = Duration::from_secs(60);
+const AGENT_STARTUP: Duration = Duration::from_secs(120);
 /// Messaggio quando la chiave non vale più (agent eliminato su playit.gg).
 const INVALID_KEY: &str = "il collegamento con playit.gg non è più valido (agent eliminato dal sito): ricollega l'account";
 
@@ -88,6 +88,20 @@ enum ApiResult<T> {
     Error(serde_json::Value),
 }
 
+/// Attese tra un tentativo e l'altro per gli errori passeggeri.
+const RETRIES: [Duration; 4] = [
+    Duration::from_secs(1),
+    Duration::from_secs(2),
+    Duration::from_secs(4),
+    Duration::from_secs(8),
+];
+
+/// Esito di un singolo tentativo: si riprova solo se è passeggero.
+enum Attempt {
+    Transient(ServerError),
+    Final(ServerError),
+}
+
 #[derive(Clone)]
 pub struct Client {
     http: reqwest::Client,
@@ -104,12 +118,34 @@ impl Client {
         Ok(Self { http })
     }
 
+    /// Chiamata all'API con ritentativi: gli intoppi passeggeri (rete,
+    /// risposte 5xx o troncate, troppe richieste) si riprovano da soli con
+    /// attese crescenti, così l'utente non deve ripetere il collegamento.
     async fn call<T: DeserializeOwned>(
         &self,
         path: &str,
         key: Option<&Secret>,
         body: &impl Serialize,
     ) -> Result<T> {
+        let mut attempt = 0;
+        loop {
+            match self.call_once(path, key, body).await {
+                Err(Attempt::Transient(_)) if attempt < RETRIES.len() => {
+                    tokio::time::sleep(RETRIES[attempt]).await;
+                    attempt += 1;
+                }
+                Err(Attempt::Transient(e) | Attempt::Final(e)) => return Err(e),
+                Ok(v) => return Ok(v),
+            }
+        }
+    }
+
+    async fn call_once<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        key: Option<&Secret>,
+        body: &impl Serialize,
+    ) -> std::result::Result<T, Attempt> {
         let mut req = self.http.post(format!("{API}{path}")).json(body);
         if let Some(key) = key {
             req = req.header(
@@ -118,27 +154,38 @@ impl Client {
             );
         }
         // Gli errori di rete non riportano la richiesta (che ha la chiave).
-        let res = req
-            .send()
-            .await
-            .map_err(|e| err(format!("playit.gg non raggiungibile: {}", e.without_url())))?;
+        let res = req.send().await.map_err(|e| {
+            Attempt::Transient(err(format!(
+                "playit.gg non raggiungibile: {}",
+                e.without_url()
+            )))
+        })?;
         let status = res.status();
         let text = res
             .text()
             .await
-            .map_err(|e| err(e.without_url().to_string()))?;
+            .map_err(|e| Attempt::Transient(err(e.without_url().to_string())))?;
+        if status.is_server_error() || status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            return Err(Attempt::Transient(err(format!(
+                "playit.gg non risponde ({status})"
+            ))));
+        }
+        let fail = |e| Err(Attempt::Final(e));
         match serde_json::from_str::<ApiResult<T>>(&text) {
             Ok(ApiResult::Success(v)) => Ok(v),
-            Ok(ApiResult::Fail(v)) => Err(err(format!("playit.gg: {}", reason(&v)))),
+            Ok(ApiResult::Fail(v)) => fail(err(format!("playit.gg: {}", reason(&v)))),
             // Agent eliminato dal sito di playit: la chiave non vale più e
             // con lei i suoi tunnel. Si dimentica, così l'interfaccia propone
             // di ricollegare l'account.
             Ok(ApiResult::Error(v)) if key.is_some() && reason(&v).contains("InvalidAgentKey") => {
                 let _ = forget();
-                Err(err(INVALID_KEY))
+                fail(err(INVALID_KEY))
             }
-            Ok(ApiResult::Error(v)) => Err(err(format!("playit.gg: {}", reason(&v)))),
-            Err(_) => Err(err(format!("risposta inattesa da playit.gg ({status})"))),
+            Ok(ApiResult::Error(v)) => fail(err(format!("playit.gg: {}", reason(&v)))),
+            // Risposta troncata o pagina d'errore di un proxy: passeggera.
+            Err(_) => Err(Attempt::Transient(err(format!(
+                "risposta inattesa da playit.gg ({status})"
+            )))),
         }
     }
 

@@ -154,3 +154,19 @@ export async function fitImage(file: File, max = 2560): Promise<string> {
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
   return canvas.toDataURL('image/jpeg', 0.88);
 }
+
+/**
+ * Ingrandisce un'immagine piccola (es. una texture 16×16 di Minecraft) a
+ * `size`×`size` PNG senza sfocarla: ogni pixel diventa un quadrato netto.
+ */
+export async function pixelPng(dataUrl: string, size = 256): Promise<string> {
+  const img = await loadImage(dataUrl);
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  ctx.imageSmoothingEnabled = false;
+  // Alcune texture sono strisce animate (16×N): si prende il primo fotogramma.
+  const side = Math.min(img.naturalWidth, img.naturalHeight);
+  ctx.drawImage(img, 0, 0, side, side, 0, 0, size, size);
+  return canvas.toDataURL('image/png');
+}

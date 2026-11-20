@@ -5,7 +5,7 @@
 
 <div class="row">
   <div class="txt"><span class="strong">{t(label)}</span>{#if hint}<span class="muted small">{t(hint)}</span>{/if}</div>
-  <button class="switch" role="switch" aria-checked={checked} aria-label={t(label)} onclick={() => (checked = !checked)}></button>
+  <button type="button" class="switch" role="switch" aria-checked={checked} aria-label={t(label)} onclick={() => (checked = !checked)}></button>
 </div>
 
 <style>

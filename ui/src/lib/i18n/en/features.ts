@@ -1,6 +1,12 @@
 // Inglese: backup, server con mod e da modpack, Gioca e invito,
 // automatismi, analisi dei crash.
 export default {
+  // Immagine dell'istanza (blocchi o file).
+  'Immagine dell’istanza': 'Instance image',
+  'Scegli un’immagine': 'Choose an image',
+  'Carica dal PC': 'Upload from PC',
+  'I blocchi arrivano dai file del gioco: compaiono dopo aver scaricato una versione di Minecraft (basta avviare un’istanza una volta).': 'Blocks come from the game files: they appear once a Minecraft version has been downloaded (just launch an instance once).',
+
   // Sfondo sfumato.
   'Sfumato': 'Gradient',
   'Due colori che si fondono.': 'Two colors blending together.',
@@ -14,6 +20,38 @@ export default {
   '↑ In alto': '↑ Up',
   '→ A destra': '→ Right',
   '← A sinistra': '← Left',
+
+  // Server da un backup o da uno zip.
+  'Mondo': 'World',
+  'Nuovo mondo': 'New world',
+  'Da un backup': 'From a backup',
+  'Da file .zip': 'From a .zip file',
+  'Scegli file .zip': 'Choose .zip file',
+  'Backup da usare': 'Backup to use',
+  'Nessun backup dei server: fanne uno dalla scheda Backup di un server.': 'No server backups: make one from a server’s Backups tab.',
+  'Il nuovo server parte con una copia di quel mondo; l’originale non cambia.': 'The new server starts with a copy of that world; the original is not changed.',
+  'Uno zip con dentro un mondo (la cartella con level.dat), anche dal giocatore singolo.': 'A zip containing a world (the folder with level.dat), singleplayer ones too.',
+
+  // playit.gg: ritentativi e guida.
+  'Riprova': 'Retry',
+  'Il lavoro già fatto non si perde: riprovando si riparte da dove si era fermato.': 'Work already done is kept: retrying resumes where it stopped.',
+  'Guida passo passo': 'Step-by-step guide',
+  'Crea un account playit.gg': 'Create a playit.gg account',
+  'È gratis: basta un’email (o l’accesso con Google). Puoi farlo anche durante il collegamento, nella pagina che si apre.': 'It’s free: an email (or Google sign-in) is enough. You can also do it while linking, on the page that opens.',
+  'Collega il launcher': 'Link the launcher',
+  'Premi “Collega”: nel browser accedi e premi “Approva”. Il launcher salva la chiave solo nel portachiavi di Windows di questo PC.': 'Press “Link”: sign in in the browser and press “Approve”. The launcher stores the key only in this PC’s Windows keyring.',
+  'Premi “Attiva”: il launcher scarica il programma ufficiale di playit (verificato), crea il tunnel e aspetta l’indirizzo. Può volerci un paio di minuti la prima volta.': 'Press “Enable”: the launcher downloads the official playit program (verified), creates the tunnel and waits for the address. It can take a couple of minutes the first time.',
+  'Avvia il server': 'Start the server',
+  'Il tunnel funziona solo a server acceso. Se il server resta acceso a launcher chiuso, anche il tunnel resta attivo.': 'The tunnel only works while the server is running. If the server stays on with the launcher closed, the tunnel stays active too.',
+  'Condividi l’indirizzo': 'Share the address',
+  'Gli amici aprono Minecraft → Multigiocatore → Aggiungi server e incollano l’indirizzo (es. nome.joinmc.link). Devono avere la stessa versione del gioco.': 'Friends open Minecraft → Multiplayer → Add Server and paste the address (e.g. name.joinmc.link). They need the same game version.',
+  'Se qualcosa non va': 'If something goes wrong',
+  'Si è fermato con un errore? Premi “Riprova”: il launcher riprova già da solo gli intoppi di rete, e il tunnel creato non va perso.': 'Stopped with an error? Press “Retry”: the launcher already retries network hiccups by itself, and the created tunnel is not lost.',
+  'Gli amici non entrano? Controlla che il server sia acceso e aspetta un minuto dopo l’avvio: il tunnel si collega poco dopo il server.': 'Friends can’t join? Check that the server is running and wait a minute after starting: the tunnel connects shortly after the server.',
+  '“Collegamento non più valido”? L’agent è stato eliminato dal sito di playit: premi di nuovo “Collega”.': '“Link no longer valid”? The agent was deleted on the playit website: press “Link” again.',
+  'L’antivirus blocca playit? Consenti “playitd.exe” nella cartella del launcher.': 'Antivirus blocking playit? Allow “playitd.exe” in the launcher folder.',
+  'I tunnel e gli agent si vedono (e si possono eliminare) anche dal sito playit.gg, nella sezione Agents.': 'Tunnels and agents can also be seen (and deleted) on the playit.gg website, in the Agents section.',
+  'Apri playit.gg': 'Open playit.gg',
 
   // Backup.
   'Backup': 'Backups',

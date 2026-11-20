@@ -412,6 +412,10 @@ function serverCommands(): Record<string, (args: Record<string, any>) => unknown
     },
     // Backup simulati: un elenco per server e per mondo di istanza.
     server_backups: ({ name }) => structuredClone(mockBackups(`s:${name}`)),
+    server_all_backups: () => servers
+      .flatMap((s) => mockBackups(`s:${s.info.name}`).map((b) => ({ ...b, server: s.info.name })))
+      .sort((x, y) => y.created - x.created),
+    server_pick_world: () => 'C:\\Users\\utente\\Downloads\\Mondo di prova.zip',
     server_backup: async ({ name }) => {
       await new Promise((r) => setTimeout(r, 1200));
       const b = { file: `${now()}-manual.zip`, created: now(), sizeBytes: 148_000_000, auto: false };
@@ -615,6 +619,18 @@ const commands: Record<string, (args: Record<string, any>) => unknown> = {
     return { instance: structuredClone(inst), blocked: [{ name: 'Entity Culling', fileName: 'entityculling-fabric-1.11.3.jar', url: 'https://www.curseforge.com/minecraft/mc-mods/entityculling' }] };
   },
   pack_export: ({ instance }) => ({ path: `C:\\Users\\utente\\Documents\\${instance}.mrpack`, linked: 3, bundled: 1 }),
+  // Blocchi simulati: texture 16×16 a pixel con il colore del blocco.
+  block_icons: () => ([['grass_block_side', '#5d9c3a'], ['dirt', '#8a5b3a'], ['stone', '#7d7d7d'], ['cobblestone', '#6b6b6b'], ['oak_planks', '#b08a52'], ['sand', '#dbcf9a'], ['diamond_ore', '#4fd1c5'], ['gold_block', '#f2c94c'], ['obsidian', '#2a1f3d'], ['netherrack', '#7a2a2a'], ['glowstone', '#e8c66a'], ['tnt_side', '#c0392b']] as [string, string][]).map(([name, color]) => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 16;
+    const x = c.getContext('2d')!;
+    for (let i = 0; i < 256; i++) {
+      x.fillStyle = color;
+      x.globalAlpha = 0.6 + ((i * 7919) % 41) / 100;
+      x.fillRect(i % 16, Math.floor(i / 16), 1, 1);
+    }
+    return { name, image: c.toDataURL('image/png') };
+  }),
   set_instance_icon: ({ name, png }) => {
     const inst = state.instances.find((i) => i.name === name)!;
     inst.icon = png;
