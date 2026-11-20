@@ -20,12 +20,14 @@
 </header>
 
 <style>
-  .titlebar { height: 36px; flex: 0 0 36px; display: flex; align-items: center; justify-content: space-between; padding-left: 14px; background: var(--bg-deep); border-bottom: 1px solid var(--line); }
+  /* Nessuno sfondo né bordo: la barra si fonde con lo sfondo della finestra
+     (tinta unita, sfumato, immagine o desktop sfocato). */
+  .titlebar { position: relative; z-index: 1; height: 36px; flex: 0 0 36px; display: flex; align-items: center; justify-content: space-between; padding-left: 14px; background: transparent; }
   .brand { display: flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 600; font-size: 13px; }
   .brand img { border-radius: 4px; }
   .ver { font-family: var(--font); font-size: 11px; color: var(--muted); border: 1px solid var(--line-strong); border-radius: 6px; padding: 1px 6px; font-weight: 500; }
   .controls { display: flex; height: 100%; }
   .controls button { width: 46px; height: 100%; background: transparent; border: 0; color: var(--muted); display: flex; align-items: center; justify-content: center; }
-  .controls button:hover { background: var(--surface-2); color: var(--text); }
+  .controls button:hover { background: color-mix(in srgb, var(--text) 10%, transparent); color: var(--text); }
   .controls .close:hover { background: #c42b1c; color: #fff; }
 </style>

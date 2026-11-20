@@ -75,6 +75,11 @@ pub struct AppearanceConfig {
     pub show_news: bool,
     /// Contenuti a tutta larghezza invece che centrati.
     pub wide_content: bool,
+    /// Sfondo sfumato: colori di partenza e di arrivo (`#rrggbb`) e verso
+    /// (`down`, `up`, `right`, `left`).
+    pub gradient_from: String,
+    pub gradient_to: String,
+    pub gradient_direction: String,
     /// Widget della Home nell'ordine mostrato; `None` = disposizione
     /// predefinita (diversa da una Home svuotata apposta).
     pub home: Option<Vec<WidgetConfig>>,
@@ -97,6 +102,9 @@ impl Default for AppearanceConfig {
             sidebar_instances: 5,
             show_news: true,
             wide_content: false,
+            gradient_from: "#6e5ae6".into(),
+            gradient_to: "#0f1115".into(),
+            gradient_direction: "down".into(),
             home: None,
         }
     }
@@ -115,7 +123,14 @@ pub struct WidgetConfig {
     pub options: std::collections::BTreeMap<String, u32>,
 }
 
-const BACKGROUNDS: &[&str] = &["solid", "transparent", "image"];
+const BACKGROUNDS: &[&str] = &["solid", "transparent", "image", "gradient"];
+const DIRECTIONS: &[&str] = &["down", "up", "right", "left"];
+
+/// `#rrggbb`.
+fn is_hex_color(s: &str) -> bool {
+    s.strip_prefix('#')
+        .is_some_and(|h| h.len() == 6 && h.bytes().all(|b| b.is_ascii_hexdigit()))
+}
 const EFFECTS: &[&str] = &["blur", "acrylic", "mica"];
 const BUTTONS: &[&str] = &["standard", "liquid"];
 const RADII: &[&str] = &["sharp", "medium", "round"];
@@ -137,8 +152,13 @@ fn widget_ok(widget: &WidgetConfig) -> bool {
 
 impl AppearanceConfig {
     /// Campi testuali con i valori ammessi.
-    fn choices(&mut self) -> [(&'static str, &mut String, &'static [&'static str]); 6] {
+    fn choices(&mut self) -> [(&'static str, &mut String, &'static [&'static str]); 7] {
         [
+            (
+                "gradient direction",
+                &mut self.gradient_direction,
+                DIRECTIONS,
+            ),
             ("background", &mut self.background, BACKGROUNDS),
             ("window effect", &mut self.effect, EFFECTS),
             ("corner style", &mut self.radius, RADII),
@@ -176,6 +196,13 @@ impl AppearanceConfig {
                 )));
             }
         }
+        for color in [&self.gradient_from, &self.gradient_to] {
+            if !is_hex_color(color) {
+                return Err(CoreError::InvalidConfig(format!(
+                    "gradient color {color:?} is not #rrggbb"
+                )));
+            }
+        }
         if let Some(home) = &self.home {
             if home.len() > MAX_WIDGETS {
                 return Err(CoreError::InvalidConfig("too many home widgets".into()));
@@ -199,6 +226,7 @@ impl AppearanceConfig {
     fn repair(&mut self) {
         let defaults = AppearanceConfig::default();
         let fallback = [
+            defaults.gradient_direction,
             defaults.background,
             defaults.effect,
             defaults.radius,
@@ -213,6 +241,12 @@ impl AppearanceConfig {
         }
         for (_, value, min, max) in self.ranges() {
             *value = (*value).clamp(min, max);
+        }
+        if !is_hex_color(&self.gradient_from) {
+            self.gradient_from = defaults.gradient_from.clone();
+        }
+        if !is_hex_color(&self.gradient_to) {
+            self.gradient_to = defaults.gradient_to.clone();
         }
         if let Some(home) = &mut self.home {
             let mut kinds = std::collections::HashSet::new();
@@ -281,8 +315,7 @@ impl Config {
                 "default memory must be at least {MIN_MEMORY_MB} MB"
             )));
         }
-        let hex = self.accent.strip_prefix('#').unwrap_or_default();
-        if hex.len() != 6 || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+        if !is_hex_color(&self.accent) {
             return Err(CoreError::InvalidConfig(format!(
                 "accent color {:?} is not #rrggbb",
                 self.accent
@@ -329,8 +362,7 @@ impl Config {
         self.download_concurrency = self
             .download_concurrency
             .clamp(*Self::CONCURRENCY.start(), *Self::CONCURRENCY.end());
-        let hex = self.accent.strip_prefix('#').unwrap_or_default();
-        if hex.len() != 6 || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+        if !is_hex_color(&self.accent) {
             self.accent = defaults.accent;
         }
         if !Self::THEMES.contains(&self.theme.as_str()) {

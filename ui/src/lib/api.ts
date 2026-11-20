@@ -86,7 +86,7 @@ export interface Settings {
 export type WidgetSize = 'small' | 'medium' | 'large';
 export interface WidgetConfig { kind: string; size: WidgetSize; options: Record<string, number> }
 export interface Appearance {
-  background: 'solid' | 'transparent' | 'image';
+  background: 'solid' | 'transparent' | 'image' | 'gradient';
   /** Intensità della sfocatura: blur = leggera, acrylic = media, mica = forte. */
   effect: 'blur' | 'acrylic' | 'mica';
   blur: number;
@@ -101,6 +101,10 @@ export interface Appearance {
   sidebarInstances: number;
   showNews: boolean;
   wideContent: boolean;
+  /** Sfondo sfumato: due colori (#rrggbb) e il verso. */
+  gradientFrom: string;
+  gradientTo: string;
+  gradientDirection: 'down' | 'up' | 'right' | 'left';
   /** null = Home predefinita (diversa da una Home svuotata). */
   home: WidgetConfig[] | null;
 }

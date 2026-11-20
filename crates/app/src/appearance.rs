@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use hyper_core::{AppearanceConfig, fs};
 use hyper_instances::image_mime;
 use serde::Serialize;
-use tauri::window::{Effect, EffectsBuilder};
+use tauri::window::{Effect, EffectState, EffectsBuilder};
 use tauri::{AppHandle, Manager, State};
 
 use crate::custom::{data_url, decode};
@@ -23,15 +23,57 @@ const MAX_BACKGROUND_BYTES: usize = 8 * 1024 * 1024;
 /// altrimenti l'interfaccia usa la tinta unita (una finestra trasparente senza
 /// effetto mostrerebbe il desktop nitido).
 pub fn apply_window_effect(app: &AppHandle, appearance: &AppearanceConfig) -> bool {
+    apply(app, appearance, false)
+}
+
+/// Ultimi valori applicati alla finestra (scala, sfondo, effetto). Le
+/// impostazioni si salvano a ogni modifica: riapplicare ogni volta l'effetto
+/// di Windows fa lampeggiare la finestra, quindi lo si fa solo se cambia.
+static APPLIED: std::sync::Mutex<Option<(u32, bool, String)>> = std::sync::Mutex::new(None);
+
+/// Riapplica l'effetto anche se uguale (es. quando la finestra torna in
+/// primo piano o dopo essere stata ridotta a icona: Windows a volte lo perde).
+pub fn refresh_window_effect(app: &AppHandle) {
+    let appearance = app.state::<AppState>().config().appearance;
+    if appearance.background == "transparent" {
+        apply(app, &appearance, true);
+    }
+}
+
+fn apply(app: &AppHandle, appearance: &AppearanceConfig, force: bool) -> bool {
     let Some(window) = app.get_webview_window("main") else {
         return false;
     };
-    if let Err(e) = window.set_zoom(f64::from(appearance.ui_scale) / 100.0) {
+    let wanted = appearance.background == "transparent";
+    let current = (appearance.ui_scale, wanted, appearance.effect.clone());
+    let previous = APPLIED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .replace(current.clone());
+    if previous.as_ref().map(|p| p.0) != Some(current.0)
+        && let Err(e) = window.set_zoom(f64::from(appearance.ui_scale) / 100.0)
+    {
         tracing::warn!(error = %e, "cannot apply the interface scale");
     }
-    let wanted = appearance.background == "transparent";
+    let state = app.state::<AppState>();
+    if !force
+        && previous
+            .as_ref()
+            .is_some_and(|p| p.1 == current.1 && p.2 == current.2)
+    {
+        return state.window_effect();
+    }
     let result = if wanted {
-        let effect = |e: Effect| window.set_effects(EffectsBuilder::new().effect(e).build());
+        // Sempre attivo: con lo stato predefinito Windows spegne Mica e
+        // Acrylic (tinta piatta) quando la finestra perde il focus.
+        let effect = |e: Effect| {
+            window.set_effects(
+                EffectsBuilder::new()
+                    .effect(e)
+                    .state(EffectState::Active)
+                    .build(),
+            )
+        };
         match appearance.effect.as_str() {
             "blur" => effect(Effect::Blur).or_else(|_| effect(Effect::Acrylic)),
             "acrylic" => effect(Effect::Acrylic),

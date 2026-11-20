@@ -53,6 +53,22 @@ fn main() {
         .setup(|app| {
             let appearance = app.state::<AppState>().config().appearance;
             appearance::apply_window_effect(app.handle(), &appearance);
+            // Tornando da "riduci a icona" Windows a volte perde l'effetto
+            // trasparente: lo si riapplica una volta, al ripristino.
+            if let Some(window) = app.get_webview_window("main") {
+                let handle = app.handle().clone();
+                let minimized = std::sync::atomic::AtomicBool::new(false);
+                let watched = window.clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::Resized(_) = event {
+                        let now = watched.is_minimized().unwrap_or(false);
+                        let was = minimized.swap(now, std::sync::atomic::Ordering::Relaxed);
+                        if was && !now {
+                            appearance::refresh_window_effect(&handle);
+                        }
+                    }
+                });
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

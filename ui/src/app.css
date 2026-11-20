@@ -65,7 +65,7 @@
   --surface: var(--c-surface);
   --surface-2: var(--c-surface-2);
 }
-:root[data-background='transparent'], :root[data-background='image'] {
+:root[data-background='transparent'], :root[data-background='image'], :root[data-background='gradient'] {
   --bg: transparent;
   --bg-deep: color-mix(in srgb, var(--c-bg-deep) calc(var(--alpha) * 85%), transparent);
   --panel: color-mix(in srgb, var(--c-panel) calc(var(--alpha) * 90%), transparent);

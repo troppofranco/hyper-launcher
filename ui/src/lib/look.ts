@@ -36,5 +36,8 @@ export function applyAppearance(a: Appearance, windowEffect: boolean) {
   root.style.setProperty('--ui-scale', String(a.uiScale / 100));
   root.style.setProperty('--bg-blur', `${a.blur}px`);
   root.style.setProperty('--bg-dim', String(a.dim / 100));
+  // Sfondo sfumato: verso e colori per Backdrop.svelte.
+  const toward = { down: 'to bottom', up: 'to top', right: 'to right', left: 'to left' }[a.gradientDirection] ?? 'to bottom';
+  root.style.setProperty('--grad', `linear-gradient(${toward}, ${a.gradientFrom}, ${a.gradientTo})`);
   setMotion(a.animations);
 }

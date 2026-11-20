@@ -1,6 +1,20 @@
 // Inglese: backup, server con mod e da modpack, Gioca e invito,
 // automatismi, analisi dei crash.
 export default {
+  // Sfondo sfumato.
+  'Sfumato': 'Gradient',
+  'Due colori che si fondono.': 'Two colors blending together.',
+  'Primo colore': 'First color',
+  'Secondo colore': 'Second color',
+  'Da': 'From',
+  'A': 'To',
+  'Inverti': 'Swap',
+  'Verso': 'Direction',
+  '↓ In basso': '↓ Down',
+  '↑ In alto': '↑ Up',
+  '→ A destra': '→ Right',
+  '← A sinistra': '← Left',
+
   // Backup.
   'Backup': 'Backups',
   'Backup del mondo': 'World backups',

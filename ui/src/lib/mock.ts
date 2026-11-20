@@ -20,7 +20,7 @@ const state: { instances: Instance[]; accounts: Account[]; settings: Settings; m
     { name: 'Dev', uuid: '380df991-f603-344c-a090-369bad2a924a', kind: 'offline', default: false, skin: null },
   ],
   settings: { defaultMemoryMb: 4096, javaPath: '', msaClientId: '', accent: '#6e5ae6', minimizeOnLaunch: true, showConsole: false, theme: 'dark', language: 'it', setupDone: false, sync: { enabled: false, keybinds: true, video: true, audio: true, controls: true },
-    appearance: { background: 'solid', effect: 'mica', blur: 16, dim: 40, panelOpacity: 70, uiScale: 100, radius: 'round', buttons: 'standard', animations: 'full', sidebarSide: 'left', sidebarLabels: false, sidebarInstances: 5, showNews: true, wideContent: false, home: null },
+    appearance: { background: 'solid', effect: 'mica', blur: 16, dim: 40, panelOpacity: 70, uiScale: 100, radius: 'round', buttons: 'standard', animations: 'full', sidebarSide: 'left', sidebarLabels: false, sidebarInstances: 5, showNews: true, wideContent: false, gradientFrom: '#6e5ae6', gradientTo: '#0f1115', gradientDirection: 'down', home: null },
     downloadConcurrency: 16, defaultJvmArgs: '', gameWidth: null, gameHeight: null, gameFullscreen: false },
   mods: [
     { file: 'sodium-fabric-0.9.2+mc26.3.jar', name: 'sodium-fabric-0.9.2+mc26.3', enabled: true, sizeBytes: 1_200_000, projectId: 'AANobbMI', slug: 'sodium', title: 'Sodium', iconUrl: null, versionNumber: 'mc26.3-0.9.2-fabric', update: 'mc26.3-0.9.3-fabric', source: 'modrinth', website: null },

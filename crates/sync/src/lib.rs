@@ -202,7 +202,11 @@ pub fn push(
     let mut changed = 0;
     for (key, value) in source.entries().filter(|(k, _)| wanted(config, k)) {
         let edited = baseline.is_none_or(|b| b.get(key) != Some(value));
-        if edited && target.get(key) != Some(value) {
+        // Una chiave che il file condiviso non ha ancora si copia sempre: un'istanza
+        // con impostazioni di prima della sincronizzazione le porta alle
+        // altre anche se in questa partita non sono cambiate.
+        let missing = target.get(key).is_none();
+        if (edited || missing) && target.get(key) != Some(value) {
             target.set(key, value);
             changed += 1;
         }
@@ -289,6 +293,25 @@ mod tests {
         let b_text = std::fs::read_to_string(&b).unwrap();
         assert_eq!(b_text, "version:5023\nkey_key.drop:key.keyboard.x\n");
         assert_eq!(pulled.get("key_key.drop"), Some("key.keyboard.x"));
+    }
+
+    #[test]
+    fn existing_settings_reach_the_shared_file_without_changes() {
+        // Un'istanza con tasti personalizzati da prima della sincronizzazione:
+        // gioca senza cambiare nulla, ma i suoi tasti vanno comunque alle altre.
+        let dir = tempfile::tempdir().unwrap();
+        let shared = dir.path().join("sync/options.txt");
+        let a = dir.path().join("a.txt");
+        let b = dir.path().join("b.txt");
+        std::fs::write(&a, "version:5023\nkey_key.drop:key.keyboard.x\nfov:0.5\n").unwrap();
+        let base_a = pull(&shared, &a, &all()).unwrap();
+        assert!(base_a.is_some(), "the instance already had its options");
+        assert_eq!(push(&a, &shared, &all(), base_a.as_ref()).unwrap(), 3);
+        std::fs::write(&b, "version:5023\nkey_key.drop:key.keyboard.q\n").unwrap();
+        pull(&shared, &b, &all()).unwrap();
+        let b_text = std::fs::read_to_string(&b).unwrap();
+        assert!(b_text.contains("key_key.drop:key.keyboard.x"), "{b_text}");
+        assert!(b_text.contains("fov:0.5"), "{b_text}");
     }
 
     #[test]
