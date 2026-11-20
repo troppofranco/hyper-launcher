@@ -312,7 +312,7 @@
   .done { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--success-text); }
   .more { align-self: center; }
   .center { text-align: center; }
-  .filters { flex: 0 0 280px; align-self: stretch; border-left: 1px solid var(--line); background: var(--panel); padding: 22px 18px; display: flex; flex-direction: column; gap: 22px; }
+  .filters { flex: 0 0 280px; align-self: stretch; margin: 12px 12px 12px 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 22px 18px; display: flex; flex-direction: column; gap: 22px; }
   .filters-title { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; }
   .filters section { display: flex; flex-direction: column; gap: 10px; }
   .filters h3, .filters p { margin: 0; }
@@ -323,6 +323,6 @@
   .chip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
   @media (max-width: 1100px) {
     .explore { flex-direction: column-reverse; }
-    .filters { align-self: auto; border-left: 0; border-bottom: 1px solid var(--line); }
+    .filters { align-self: auto; margin: 12px 12px 0; }
   }
 </style>
