@@ -99,7 +99,7 @@
             <label class="label" for="project-target">{t('Installa in')}</label>
             <select id="project-target" class="input" bind:value={ex.instance}>
               <option value={null}>{t('Scegli un’istanza…')}</option>
-              {#each app.recent as inst (inst.name)}
+              {#each app.recent.filter((i) => i.edition !== 'bedrock') as inst (inst.name)}
                 <option value={inst.name}>{inst.name} · {inst.loader ? inst.loader.name : 'Vanilla'} {inst.version}</option>
               {/each}
             </select>

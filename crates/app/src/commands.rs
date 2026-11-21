@@ -45,6 +45,9 @@ pub struct NewInstance {
     pub version: String,
     /// Assente = vanilla.
     pub loader: Option<LoaderKind>,
+    /// Assente = Java.
+    #[serde(default)]
+    pub edition: hyper_instances::Edition,
 }
 
 #[tauri::command]
@@ -52,6 +55,10 @@ pub async fn create_instance(
     state: State<'_, AppState>,
     input: NewInstance,
 ) -> CmdResult<InstanceView> {
+    if input.edition == hyper_instances::Edition::Bedrock {
+        let instance = crate::bedrock::create(&state, &input.name)?;
+        return Ok(InstanceView::new(&instance));
+    }
     let loader = match input.loader {
         Some(kind) => Some(
             state
@@ -109,6 +116,7 @@ pub async fn delete_instance(state: State<'_, AppState>, name: String) -> CmdRes
         return Err("L'istanza è in uso: chiudi il gioco prima di eliminarla.".into());
     }
     let manager = state.instances();
+    crate::bedrock::ensure_deletable(&state, &manager.load(&name).cmd()?)?;
     // Cancellare gigabyte di mondi richiede tempo: fuori dal thread della UI.
     tokio::task::spawn_blocking(move || manager.delete(&name))
         .await

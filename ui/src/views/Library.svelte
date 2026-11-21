@@ -58,7 +58,7 @@
           </span>
           <span class="tile-name">{inst.name}</span>
           <span class="muted small">{inst.playtimeSecs ? t('{time} giocate', { time: playtime(inst.playtimeSecs) }) : t('Mai giocata')}</span>
-          <span class="tile-foot"><span>{loaderLabel(inst)}</span><span>{inst.version}</span></span>
+          <span class="tile-foot"><span class:bedrock={inst.edition === 'bedrock'}>{loaderLabel(inst)}</span><span>{inst.version}</span></span>
         </button>
           <button class="tile-del" disabled={!!app.launches[inst.name]} aria-label={t('Elimina {nome}', { nome: inst.name })} title={t('Elimina')} onclick={() => (deleting = inst.name)}><Icon name="trash" size={15} /></button>
         </div>
@@ -96,6 +96,7 @@
   .tile-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
   .tile-name { font-weight: 600; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tile-foot { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .tile-foot .bedrock { color: var(--success-text); font-weight: 600; }
   .empty { padding: 24px; display: flex; justify-content: space-between; align-items: center; }
   .empty p { margin: 0; }
 </style>

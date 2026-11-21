@@ -78,6 +78,52 @@ const CONTROLS: &[&str] = &[
     "touchscreen",
 ];
 
+/// Edizione del gioco: i due `options.txt` hanno chiavi diverse, quindi
+/// ognuna ha il suo file condiviso e la sua tabella di categorie.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Edition {
+    Java,
+    Bedrock,
+}
+
+/// Categoria di una chiave di `options.txt` di Bedrock
+/// (`com.mojang/minecraftpe/options.txt`): le famiglie si riconoscono dal
+/// prefisso.
+pub fn bedrock_category_of(key: &str) -> Option<Category> {
+    // Tastiera (`keyboard_type_*`) e controller (`ctrl_type_*`, `gamepad_type_*`).
+    const KEYBINDS: &[&str] = &[
+        "keyboard_type_",
+        "ctrl_type_",
+        "gamepad_type_",
+        "motion_controller_type_",
+    ];
+    const VIDEO: &[&str] = &["gfx_", "graphics_", "bloom_", "upscaling_", "glint_"];
+    const VIDEO_KEYS: &[&str] = &[
+        "shadow_quality",
+        "cloud_quality",
+        "volumetric_fog_quality",
+        "reflections_quality",
+    ];
+    if KEYBINDS.iter().any(|p| key.starts_with(p)) {
+        Some(Category::Keybinds)
+    } else if VIDEO.iter().any(|p| key.starts_with(p)) || VIDEO_KEYS.contains(&key) {
+        Some(Category::Video)
+    } else if key.starts_with("audio_") || key.starts_with("subtitle_") {
+        Some(Category::Audio)
+    } else if key.starts_with("ctrl_") {
+        Some(Category::Controls)
+    } else {
+        None
+    }
+}
+
+fn category_in(edition: Edition, key: &str) -> Option<Category> {
+    match edition {
+        Edition::Java => category_of(key),
+        Edition::Bedrock => bedrock_category_of(key),
+    }
+}
+
 /// Categoria di una chiave di `options.txt` (`None` = resta dell'istanza).
 pub fn category_of(key: &str) -> Option<Category> {
     if key.starts_with("key_") {
@@ -95,8 +141,8 @@ pub fn category_of(key: &str) -> Option<Category> {
     }
 }
 
-fn wanted(config: &SyncConfig, key: &str) -> bool {
-    match category_of(key) {
+fn wanted(config: &SyncConfig, edition: Edition, key: &str) -> bool {
+    match category_in(edition, key) {
         Some(Category::Keybinds) => config.keybinds,
         Some(Category::Video) => config.video,
         Some(Category::Audio) => config.audio,
@@ -108,8 +154,17 @@ fn wanted(config: &SyncConfig, key: &str) -> bool {
 /// Copia in `target` le chiavi di `source` delle categorie attive;
 /// restituisce quante sono cambiate.
 pub fn merge(source: &OptionsFile, target: &mut OptionsFile, config: &SyncConfig) -> usize {
+    merge_in(Edition::Java, source, target, config)
+}
+
+fn merge_in(
+    edition: Edition,
+    source: &OptionsFile,
+    target: &mut OptionsFile,
+    config: &SyncConfig,
+) -> usize {
     let mut changed = 0;
-    for (key, value) in source.entries().filter(|(k, _)| wanted(config, k)) {
+    for (key, value) in source.entries().filter(|(k, _)| wanted(config, edition, k)) {
         if target.get(key) != Some(value) {
             target.set(key, value);
             changed += 1;
@@ -164,12 +219,24 @@ pub fn pull(
     options: &Path,
     config: &SyncConfig,
 ) -> Result<Option<OptionsFile>, CoreError> {
+    pull_in(Edition::Java, shared, options, config)
+}
+
+/// Come [`pull`], per l'edizione indicata. Bedrock non ha una "data
+/// version": un file nuovo nasce con le sole impostazioni condivise.
+pub fn pull_in(
+    edition: Edition,
+    shared: &Path,
+    options: &Path,
+    config: &SyncConfig,
+) -> Result<Option<OptionsFile>, CoreError> {
     let current = read(options)?;
     let Some(source) = read(shared)? else {
         return Ok(current);
     };
     let mut target = match current {
         Some(target) => target,
+        None if edition == Edition::Bedrock => OptionsFile::default(),
         None => {
             let Some(version) = source.get(VERSION_KEY) else {
                 return Ok(None);
@@ -179,7 +246,7 @@ pub fn pull(
             fresh
         }
     };
-    if merge(&source, &mut target, config) > 0 || !options.exists() {
+    if merge_in(edition, &source, &mut target, config) > 0 || !options.exists() {
         fs::write_atomic(options, target.to_string().as_bytes())?;
     }
     Ok(Some(target))
@@ -195,12 +262,23 @@ pub fn push(
     config: &SyncConfig,
     baseline: Option<&OptionsFile>,
 ) -> Result<usize, CoreError> {
+    push_in(Edition::Java, options, shared, config, baseline)
+}
+
+/// Come [`push`], per l'edizione indicata.
+pub fn push_in(
+    edition: Edition,
+    options: &Path,
+    shared: &Path,
+    config: &SyncConfig,
+    baseline: Option<&OptionsFile>,
+) -> Result<usize, CoreError> {
     let Some(source) = read(options)? else {
         return Ok(0);
     };
     let mut target = read(shared)?.unwrap_or_default();
     let mut changed = 0;
-    for (key, value) in source.entries().filter(|(k, _)| wanted(config, k)) {
+    for (key, value) in source.entries().filter(|(k, _)| wanted(config, edition, k)) {
         let edited = baseline.is_none_or(|b| b.get(key) != Some(value));
         // Una chiave che il file condiviso non ha ancora si copia sempre: un'istanza
         // con impostazioni di prima della sincronizzazione le porta alle
@@ -212,7 +290,7 @@ pub fn push(
         }
     }
     // La versione condivisa è quella del gioco più recente che l'ha scritta.
-    if data_version(&source) > data_version(&target) {
+    if edition == Edition::Java && data_version(&source) > data_version(&target) {
         target.set(VERSION_KEY, data_version(&source).to_string());
         changed += 1;
     }
@@ -337,6 +415,59 @@ mod tests {
             shared_text.contains("key_key.drop:key.keyboard.x"),
             "{shared_text}"
         );
+    }
+
+    #[test]
+    fn bedrock_settings_move_between_installations() {
+        assert_eq!(
+            bedrock_category_of("keyboard_type_0_key.jump"),
+            Some(Category::Keybinds)
+        );
+        assert_eq!(
+            bedrock_category_of("gfx_viewdistance"),
+            Some(Category::Video)
+        );
+        assert_eq!(bedrock_category_of("audio_music"), Some(Category::Audio));
+        assert_eq!(
+            bedrock_category_of("ctrl_sensitivity2"),
+            Some(Category::Controls)
+        );
+        assert_eq!(
+            bedrock_category_of("ctrl_type_0_key.jump"),
+            Some(Category::Keybinds)
+        );
+        assert_eq!(bedrock_category_of("shadow_quality"), Some(Category::Video));
+        assert_eq!(bedrock_category_of("graphics_mode"), Some(Category::Video));
+        assert_eq!(bedrock_category_of("gpu_validation_enabled"), None);
+        assert_eq!(bedrock_category_of("game_language"), None);
+        // Le chiavi Java non sono di Bedrock e viceversa.
+        assert_eq!(bedrock_category_of("key_key.jump"), None);
+        assert_eq!(category_of("gfx_viewdistance"), None);
+
+        let dir = tempfile::tempdir().unwrap();
+        let shared = dir.path().join("sync/bedrock-options.txt");
+        let a = dir.path().join("a.txt");
+        let b = dir.path().join("b.txt");
+        std::fs::write(
+            &a,
+            "keyboard_type_0_key.jump:70
+gfx_viewdistance:256
+game_language:it_IT
+",
+        )
+        .unwrap();
+        assert_eq!(
+            push_in(Edition::Bedrock, &a, &shared, &all(), None).unwrap(),
+            2
+        );
+        // Un'installazione nuova (senza options.txt) riceve le impostazioni.
+        let pulled = pull_in(Edition::Bedrock, &shared, &b, &all())
+            .unwrap()
+            .unwrap();
+        assert_eq!(pulled.get("keyboard_type_0_key.jump"), Some("70"));
+        let b_text = std::fs::read_to_string(&b).unwrap();
+        assert!(!b_text.contains("game_language"), "{b_text}");
+        assert!(!b_text.contains("version"), "{b_text}");
     }
 
     #[test]

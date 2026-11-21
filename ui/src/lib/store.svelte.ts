@@ -293,7 +293,9 @@ class AppStore {
   }
 
   async play(name: string, join: string | null = null) {
-    if (!this.activeAccount) {
+    // Bedrock usa l'account del Microsoft Store, non quello del launcher.
+    const bedrock = this.instances.find((i) => i.name === name)?.edition === 'bedrock';
+    if (!bedrock && !this.activeAccount) {
       this.addAccountOpen = true;
       this.info_(t('Aggiungi un account per giocare.'));
       return;

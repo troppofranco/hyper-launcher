@@ -52,7 +52,8 @@ export function initial(name: string): string {
   return (name.trim()[0] ?? '?').toUpperCase();
 }
 
-export function loaderLabel(i: { version: string; loader: { name: string; version: string } | null }): string {
+export function loaderLabel(i: { version: string; loader: { name: string; version: string } | null; edition?: string }): string {
+  if (i.edition === 'bedrock') return 'Bedrock';
   return i.loader ? `${i.loader.name} ${i.loader.version}` : 'Vanilla';
 }
 

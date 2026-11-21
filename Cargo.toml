@@ -17,6 +17,7 @@ hyper-instances = { path = "crates/instances" }
 hyper-content = { path = "crates/content" }
 hyper-sync = { path = "crates/sync" }
 hyper-server = { path = "crates/server" }
+hyper-bedrock = { path = "crates/bedrock" }
 
 anyhow = "1"
 base64 = "0.22"

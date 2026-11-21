@@ -131,6 +131,12 @@ impl Paths {
         self.root.join("sync").join("options.txt")
     }
 
+    /// `options.txt` condiviso tra le installazioni Bedrock (chiavi diverse
+    /// da Java, quindi un file a parte).
+    pub fn shared_bedrock_options_file(&self) -> PathBuf {
+        self.root.join("sync").join("bedrock-options.txt")
+    }
+
     /// File temporanei scaricati (es. modpack da importare).
     pub fn cache_dir(&self) -> PathBuf {
         self.root.join("cache")

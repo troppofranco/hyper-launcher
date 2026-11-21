@@ -126,7 +126,7 @@
         <label for="explore-target" class="muted">{t('Installa in')}</label>
         <select id="explore-target" class="input" bind:value={ex.instance}>
           <option value={null}>{t('Nessuna istanza (mostra tutto)')}</option>
-          {#each app.recent as inst (inst.name)}
+          {#each app.recent.filter((i) => i.edition !== 'bedrock') as inst (inst.name)}
             <option value={inst.name}>{inst.name} · {loaderLabel(inst)} {inst.version}</option>
           {/each}
         </select>

@@ -1957,11 +1957,13 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "hyper-auth",
+ "hyper-bedrock",
  "hyper-content",
  "hyper-core",
  "hyper-installer",
  "hyper-instances",
  "hyper-server",
+ "hyper-sync",
  "serde",
  "serde_json",
  "tauri",
@@ -1992,6 +1994,23 @@ dependencies = [
  "uuid",
  "wiremock",
  "zeroize",
+]
+
+[[package]]
+name = "hyper-bedrock"
+version = "0.1.0"
+dependencies = [
+ "hyper-core",
+ "hyper-installer",
+ "serde",
+ "serde_json",
+ "sysinfo",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "uuid",
+ "zip",
 ]
 
 [[package]]

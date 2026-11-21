@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { api, type World } from '../lib/api';
+  import { api, type BedrockStatus, type World } from '../lib/api';
   import { app } from '../lib/store.svelte';
   import { playtime, relativeDay } from '../lib/format';
   import Icon from '../components/Icon.svelte';
@@ -10,11 +10,14 @@
   import ContentList from '../components/ContentList.svelte';
   import BackupList from '../components/BackupList.svelte';
   import IconPicker from '../components/IconPicker.svelte';
+  import BedrockContent from '../components/BedrockContent.svelte';
   import { t } from '../lib/i18n.svelte';
 
   let { name }: { name: string } = $props();
 
-  type Tab = 'mods' | 'resourcepacks' | 'shaderpacks' | 'worlds' | 'console' | 'settings';
+  type BedrockTab = 'resource' | 'behavior' | 'world' | 'skin';
+  type Tab = 'mods' | 'resourcepacks' | 'shaderpacks' | 'worlds' | 'console' | 'settings' | BedrockTab;
+  const BEDROCK_TABS: BedrockTab[] = ['resource', 'behavior', 'world', 'skin'];
   let tab = $state<Tab>('mods');
   let modCount = $state<number | null>(null);
   let worlds = $state<World[]>([]);
@@ -34,7 +37,23 @@
   const inst = $derived(app.instances.find((i) => i.name === name) ?? null);
   const launch = $derived(app.launches[name]);
   const log = $derived(app.logs[name] ?? []);
-  const status = $derived(launch?.phase === 'running' ? t('In gioco') : launch ? t('Installazione') : t('Pronta'));
+  const bedrockInst = $derived(inst?.edition === 'bedrock');
+  const status = $derived(launch?.phase === 'running' ? t('In gioco') : launch ? (bedrockInst ? t('Avvio…') : t('Installazione')) : t('Pronta'));
+
+  // Stato del gioco Bedrock: quale installazione è nel gioco, se è aperto.
+  let bedrock = $state<BedrockStatus | null>(null);
+  $effect(() => {
+    if (!bedrockInst) return;
+    void launch?.phase;
+    api.bedrockStatus().then((s) => (bedrock = s)).catch((e) => app.error(e));
+  });
+  const inUse = $derived(bedrockInst && bedrock?.active === name);
+  /** Con il gioco aperto i file dell'installazione attiva non si toccano. */
+  const bedrockBlocked = $derived(
+    launch ? t('Chiudi il gioco prima di modificare l’installazione.')
+    : inUse && bedrock?.running ? t('Chiudi Minecraft Bedrock prima di modificare l’installazione.')
+    : null,
+  );
 
   // Ricarica i dati della scheda quando cambia istanza o scheda.
   $effect(() => {
@@ -59,7 +78,12 @@
 
   // Se l'istanza è vanilla mod e shader non servono: si parte dai resource pack.
   $effect(() => {
-    if (inst && !inst.loader && (tab === 'mods' || tab === 'shaderpacks')) tab = 'resourcepacks';
+    if (!inst) return;
+    if (inst.edition === 'bedrock') {
+      if (tab !== 'settings' && !BEDROCK_TABS.includes(tab as BedrockTab)) tab = 'resource';
+    } else if (BEDROCK_TABS.includes(tab as BedrockTab) || (!inst.loader && (tab === 'mods' || tab === 'shaderpacks'))) {
+      tab = inst.loader ? 'mods' : 'resourcepacks';
+    }
   });
 
   async function setIcon(png: string | null) {
@@ -108,7 +132,13 @@
     }
   }
 
-  const tabs = $derived<[Tab, string][]>([
+  const tabs = $derived<[Tab, string][]>(bedrockInst ? [
+    ['resource', t('Pacchetti risorse')],
+    ['behavior', t('Add-on')],
+    ['world', t('Mondi')],
+    ['skin', t('Skin pack')],
+    ['settings', t('Impostazioni installazione')],
+  ] : [
     ...(inst?.loader ? [['mods', modCount === null ? t('Mod') : t('Mod · {n}', { n: modCount })] as [Tab, string]] : []),
     ['resourcepacks', t('Resource pack')],
     ...(inst?.loader ? [['shaderpacks', t('Shader')] as [Tab, string]] : []),
@@ -135,13 +165,18 @@
         </div>
         <div class="title">
           <div class="sub">
+            {#if bedrockInst}
+              <span class="badge-bedrock">Bedrock</span><span>Minecraft Bedrock {bedrock?.version ?? inst.version}</span>
+              {#if inUse}<span>·</span><span>{t('in uso dal gioco')}</span>{/if}
+            {:else}
             {#if inst.loader}<span class="loader">{inst.loader.name} {inst.loader.version}</span><span>·</span>{/if}
             <span>Minecraft {inst.version}</span>
+            {/if}
           </div>
           <h1 class="page-title">{inst.name}</h1>
         </div>
-        <button class="btn icon-only" disabled={!!launch} aria-label={t('Elimina istanza')} title={t('Elimina istanza')} onclick={() => (deleteOpen = true)}><Icon name="trash" size={16} /></button>
-        <button class="btn" disabled={exporting} onclick={exportPack}><Icon name="download" size={16} /> {t('Esporta .mrpack')}</button>
+        <button class="btn icon-only" disabled={!!launch || inUse} aria-label={t('Elimina istanza')} title={inUse ? t('È l’installazione in uso dal gioco: avvia prima un’altra installazione Bedrock.') : t('Elimina istanza')} onclick={() => (deleteOpen = true)}><Icon name="trash" size={16} /></button>
+        {#if !bedrockInst}<button class="btn" disabled={exporting} onclick={exportPack}><Icon name="download" size={16} /> {t('Esporta .mrpack')}</button>{/if}
         <PlayButton name={inst.name} size="large" />
       </div>
       <div class="facts">
@@ -157,7 +192,15 @@
       {/each}
     </div>
 
-    {#if tab === 'mods'}
+    {#if bedrockInst && bedrock && !bedrock.installed}
+      <p class="warn-box">{t('Minecraft Bedrock non è installato su questo PC: installalo dal Microsoft Store per giocare.')}</p>
+    {:else if bedrockInst && bedrock && !bedrock.profile}
+      <p class="warn-box">{t('Apri Minecraft Bedrock una volta da qui (premi Gioca) e accedi con il tuo account Microsoft: il gioco crea le cartelle per mondi e impostazioni.')}</p>
+    {/if}
+
+    {#if tab === 'resource' || tab === 'behavior' || tab === 'world' || tab === 'skin'}
+      <BedrockContent instance={name} kind={tab} blocked={bedrockBlocked} />
+    {:else if tab === 'mods'}
       <ContentList instance={name} kind="mod" oncount={(n) => (modCount = n)} />
     {:else if tab === 'resourcepacks'}
       <ContentList instance={name} kind="resourcepack" />
@@ -196,6 +239,7 @@
       </div>
     {:else}
       <form class="card form" onsubmit={save}>
+        {#if !bedrockInst}
         <div class="setting">
           <div><div class="mod-name">{t('Memoria dedicata')}</div><div class="muted small">{t('Se spento usa la memoria predefinita delle impostazioni ({gb} GB).', { gb: Math.round((app.settings?.defaultMemoryMb ?? 4096) / 1024) })}</div></div>
           <button type="button" class="switch" role="switch" aria-checked={customMemory} aria-label={t('Memoria dedicata')} onclick={() => (customMemory = !customMemory)}></button>
@@ -205,20 +249,23 @@
             <input type="range" min="1" max="32" step="1" bind:value={memoryGb} />
           </label>
         {/if}
+        {/if}
         <div class="setting">
-          <div><div class="mod-name">{t('Usa le impostazioni condivise')}</div><div class="muted small">{app.settings?.sync.enabled ? t('Tasti e impostazioni grafiche sincronizzati con le altre istanze.') : t('La sincronizzazione è spenta: si attiva in Impostazioni → Sincronizzazione.')}</div></div>
+          <div><div class="mod-name">{t('Usa le impostazioni condivise')}</div><div class="muted small">{!app.settings?.sync.enabled ? t('La sincronizzazione è spenta: si attiva in Impostazioni → Sincronizzazione.') : bedrockInst ? t('Tasti, grafica e audio uguali in tutte le installazioni Bedrock (Java e Bedrock si sincronizzano separatamente).') : t('Tasti e impostazioni grafiche sincronizzati con le altre istanze.')}</div></div>
           <button type="button" class="switch" role="switch" aria-checked={syncSettings} aria-label={t('Usa le impostazioni condivise')} onclick={() => (syncSettings = !syncSettings)}></button>
         </div>
+        {#if !bedrockInst}
         <label class="field">{t('Java (facoltativo)')}
           <input class="input" bind:value={javaPath} placeholder={t('Vuoto = automatico (runtime ufficiale Mojang)')} />
         </label>
         <label class="field">{t('Argomenti JVM aggiuntivi')}
           <input class="input" bind:value={jvmArgs} placeholder={t('es. -XX:+UseZGC')} />
         </label>
+        {/if}
         <div class="form-actions">
-          <button type="button" class="btn danger" disabled={!!launch} onclick={() => (deleteOpen = true)}><Icon name="trash" size={16} /> {t('Elimina istanza')}</button>
+          <button type="button" class="btn danger" disabled={!!launch || inUse} title={inUse ? t('È l’installazione in uso dal gioco: avvia prima un’altra installazione Bedrock.') : undefined} onclick={() => (deleteOpen = true)}><Icon name="trash" size={16} /> {t('Elimina istanza')}</button>
           <span class="actions">
-            <button type="button" class="btn" onclick={() => api.openFolder(name, 'game')}><Icon name="folder" size={16} /> {t('Apri cartella')}</button>
+            {#if !bedrockInst}<button type="button" class="btn" onclick={() => api.openFolder(name, 'game')}><Icon name="folder" size={16} /> {t('Apri cartella')}</button>{/if}
             <button type="submit" class="btn primary" disabled={saving}>{t('Salva')}</button>
           </span>
         </div>
@@ -248,6 +295,8 @@
   .title { flex: 1; min-width: 200px; }
   .sub { display: flex; gap: 8px; font-size: 12px; color: var(--muted); }
   .loader { color: var(--warn-text); }
+  .badge-bedrock { padding: 1px 7px; border-radius: 9px; font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; background: color-mix(in srgb, var(--success) 18%, transparent); color: var(--success-text); }
+  .warn-box { margin: 0; padding: 12px 14px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--warn-text) 12%, var(--panel)); color: var(--text-2); line-height: 1.5; }
   .title h1 { margin-top: 4px; }
   .facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--line); }
   .facts div { padding: 14px 22px; display: flex; flex-direction: column; gap: 4px; }

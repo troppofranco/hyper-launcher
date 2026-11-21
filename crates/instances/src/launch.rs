@@ -331,6 +331,7 @@ mod tests {
                 last_played: None,
                 playtime_secs: 0,
                 sync_settings: true,
+                edition: Default::default(),
             },
             dir: PathBuf::from("inst"),
         }

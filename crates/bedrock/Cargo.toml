@@ -1,0 +1,25 @@
+[package]
+name = "hyper-bedrock"
+description = "Installazioni di Minecraft Bedrock (Windows, GDK): profili con cartelle scambiate, pacchetti, mondi e avvio"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+hyper-core.workspace = true
+hyper-installer.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sysinfo.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+zip.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

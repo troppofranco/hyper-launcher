@@ -32,6 +32,7 @@ pub struct InstanceView {
     pub sync_settings: bool,
     /// Immagine scelta dall'utente (`data:` URL), se c'è.
     pub icon: Option<String>,
+    pub edition: hyper_instances::Edition,
 }
 
 impl InstanceView {
@@ -52,6 +53,7 @@ impl InstanceView {
             java_path: c.java_path.as_ref().map(|p| p.display().to_string()),
             jvm_args: c.jvm_args.clone(),
             sync_settings: c.sync_settings,
+            edition: c.edition,
             icon: instance.icon().and_then(|bytes| {
                 Some(crate::custom::data_url(
                     hyper_instances::image_mime(&bytes)?,

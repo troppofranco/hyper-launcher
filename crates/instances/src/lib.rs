@@ -90,6 +90,17 @@ impl From<hyper_installer::InstallerError> for InstanceError {
 
 pub type Result<T, E = InstanceError> = std::result::Result<T, E>;
 
+/// Edizione del gioco di un'istanza.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Edition {
+    #[default]
+    Java,
+    /// Minecraft Bedrock (Microsoft Store): l'istanza è un profilo di
+    /// mondi, pacchetti e impostazioni, vedi `hyper_bedrock`.
+    Bedrock,
+}
+
 /// Contenuto di `instance.toml`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InstanceConfig {
@@ -119,6 +130,9 @@ pub struct InstanceConfig {
     /// Usa le impostazioni condivise (se la sincronizzazione è attiva).
     #[serde(default = "default_true")]
     pub sync_settings: bool,
+    /// Assente nelle istanze create prima di Bedrock: sono Java.
+    #[serde(default)]
+    pub edition: Edition,
 }
 
 fn default_true() -> bool {
@@ -148,6 +162,15 @@ impl Instance {
     /// Cartella `.minecraft` dell'istanza (mondi, opzioni, mod, log).
     pub fn game_dir(&self) -> PathBuf {
         self.dir.join("minecraft")
+    }
+
+    /// Dati di un'istanza Bedrock quando non è quella attiva nel gioco.
+    pub fn bedrock_dir(&self) -> PathBuf {
+        self.dir.join("bedrock")
+    }
+
+    pub fn is_bedrock(&self) -> bool {
+        self.config.edition == Edition::Bedrock
     }
 
     /// Native estratte, rigenerate a ogni avvio.
@@ -268,6 +291,26 @@ impl InstanceManager {
         version: &str,
         loader: Option<LoaderSpec>,
     ) -> Result<Instance> {
+        self.create_edition(name, version, loader, Edition::Java)
+    }
+
+    /// Crea un'istanza Bedrock (`version` è quella del gioco installato,
+    /// solo da mostrare: Bedrock si aggiorna da solo).
+    pub fn create_bedrock(&self, name: &str, version: &str) -> Result<Instance> {
+        let name = match name.trim() {
+            "" => self.unique_name("Bedrock")?,
+            name => name.to_owned(),
+        };
+        self.create_edition(&name, version, None, Edition::Bedrock)
+    }
+
+    fn create_edition(
+        &self,
+        name: &str,
+        version: &str,
+        loader: Option<LoaderSpec>,
+        edition: Edition,
+    ) -> Result<Instance> {
         let dir = self.paths.instance_dir(name)?;
         if dir.exists() {
             return Err(InstanceError::AlreadyExists(name.to_owned()));
@@ -284,10 +327,14 @@ impl InstanceManager {
                 last_played: None,
                 playtime_secs: 0,
                 sync_settings: true,
+                edition,
             },
             dir,
         };
-        fs::create_dir_all(&instance.game_dir())?;
+        match edition {
+            Edition::Java => fs::create_dir_all(&instance.game_dir())?,
+            Edition::Bedrock => fs::create_dir_all(&instance.bedrock_dir())?,
+        }
         instance.save()?;
         Ok(instance)
     }

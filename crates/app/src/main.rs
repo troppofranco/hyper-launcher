@@ -6,6 +6,7 @@
 
 mod appearance;
 mod backups;
+mod bedrock;
 mod commands;
 mod content;
 mod custom;
@@ -51,6 +52,7 @@ fn main() {
         .manage(state)
         // Effetto trasparente della finestra (Mica/Acrylic) scelto nelle Impostazioni.
         .setup(|app| {
+            bedrock::recover(&app.state::<AppState>());
             let appearance = app.state::<AppState>().config().appearance;
             appearance::apply_window_effect(app.handle(), &appearance);
             // Tornando da "riduci a icona" Windows a volte perde l'effetto
@@ -73,6 +75,11 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
+            bedrock::bedrock_status,
+            bedrock::bedrock_packs,
+            bedrock::bedrock_import,
+            bedrock::bedrock_delete,
+            bedrock::bedrock_open_folder,
             appearance::background,
             appearance::set_background,
             appearance::storage_usage,

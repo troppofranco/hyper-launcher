@@ -101,6 +101,21 @@ async fn run(
     let state = app.state::<AppState>();
     let config = state.config();
 
+    // Bedrock: niente account del launcher né Java, il gioco è quello del
+    // Microsoft Store.
+    if state.instances().load(name)?.is_bedrock() {
+        crate::bedrock::run(app, name, || {
+            emit_state(app, name, "running");
+            if config.minimize_on_launch
+                && let Some(window) = app.get_webview_window("main")
+            {
+                let _ = window.minimize();
+            }
+        })
+        .await?;
+        return Ok((None, None));
+    }
+
     let accounts = AccountStore::load(&state.paths.accounts_file())?;
     let account = accounts
         .select(None)

@@ -3,7 +3,7 @@
 // se non come codice inutilizzato.
 
 import type { Route } from './store.svelte';
-import type { Account, BackupInfo, InstalledContent, Instance, SearchHit, ServerInfo, ServerPlayers, ServerPlugin, ServerProperties, Settings, StatsPoint } from './api';
+import type { Account, BackupInfo, BedrockKind, BedrockPack, InstalledContent, Instance, SearchHit, ServerInfo, ServerPlayers, ServerPlugin, ServerProperties, Settings, StatsPoint } from './api';
 
 type Handler = (payload: unknown) => void;
 const handlers = new Map<string, Set<Handler>>();
@@ -11,9 +11,10 @@ const now = () => Math.floor(Date.now() / 1000);
 
 const state: { instances: Instance[]; accounts: Account[]; settings: Settings; mods: InstalledContent[] } = {
   instances: [
-    { name: 'Sopravvivenza', version: '26.3', loader: { kind: 'fabric', name: 'Fabric', version: '0.20.1' }, created: now() - 86400 * 3, lastPlayed: now() - 3600, playtimeSecs: 5880, memoryMb: 6144, javaPath: null, jvmArgs: [], syncSettings: true, icon: null },
-    { name: 'Minecraft 26.3', version: '26.3', loader: null, created: now() - 86400 * 5, lastPlayed: now() - 86400, playtimeSecs: 720, memoryMb: null, javaPath: null, jvmArgs: [], syncSettings: true, icon: null },
-    { name: 'Snapshot', version: '26.4-snapshot-8', loader: null, created: now() - 3600, lastPlayed: null, playtimeSecs: 0, memoryMb: null, javaPath: null, jvmArgs: [], syncSettings: true, icon: null },
+    { name: 'Sopravvivenza', version: '26.3', loader: { kind: 'fabric', name: 'Fabric', version: '0.20.1' }, created: now() - 86400 * 3, lastPlayed: now() - 3600, playtimeSecs: 5880, memoryMb: 6144, javaPath: null, jvmArgs: [], syncSettings: true, icon: null, edition: 'java' as const },
+    { name: 'Minecraft 26.3', version: '26.3', loader: null, created: now() - 86400 * 5, lastPlayed: now() - 86400, playtimeSecs: 720, memoryMb: null, javaPath: null, jvmArgs: [], syncSettings: true, icon: null, edition: 'java' as const },
+    { name: 'Avventura con Luca', version: '1.21.130', loader: null, created: now() - 86400 * 9, lastPlayed: now() - 86400 * 2, playtimeSecs: 43200, memoryMb: null, javaPath: null, jvmArgs: [], syncSettings: true, icon: null, edition: 'bedrock' as const },
+    { name: 'Snapshot', version: '26.4-snapshot-8', loader: null, created: now() - 3600, lastPlayed: null, playtimeSecs: 0, memoryMb: null, javaPath: null, jvmArgs: [], syncSettings: true, icon: null, edition: 'java' as const },
   ],
   accounts: [
     { name: 'TroppoFranco', uuid: '069a79f4-44e9-4726-a5be-fca90e38aaf5', kind: 'microsoft', default: true, skin: null },
@@ -324,6 +325,42 @@ function simulateServerCreate(name: string) {
 
 /** Backup simulati per chiave (`s:<server>` o `w:<istanza>/<mondo>`). */
 const backups = new Map<string, BackupInfo[]>();
+const bedrockPacks = new Map<string, Record<BedrockKind, BedrockPack[]>>();
+function mockPackIcon(color: string): string | null {
+  if (typeof document === 'undefined') return null;
+  const c = document.createElement('canvas');
+  c.width = c.height = 16;
+  const g = c.getContext('2d');
+  if (!g) return null;
+  g.fillStyle = color;
+  g.fillRect(0, 0, 16, 16);
+  g.fillStyle = 'rgba(255,255,255,.25)';
+  for (let i = 0; i < 16; i += 4) g.fillRect(i, (i * 7) % 16, 4, 4);
+  return c.toDataURL();
+}
+function mockBedrockPacks(name: string): Record<BedrockKind, BedrockPack[]> {
+  let packs = bedrockPacks.get(name);
+  if (!packs) {
+    const pack = (kind: BedrockKind, scope: 'shared' | 'user', folder: string, title: string, description: string, version: string | null, color: string, age: number): BedrockPack =>
+      ({ kind, scope, folder, name: title, description, version, uuid: folder, icon: mockPackIcon(color), modified: now() - age });
+    packs = {
+      resource: [pack('resource', 'shared', 'Texture chiare', 'Texture chiare', 'Blocchi più luminosi e puliti', '1.3.0', '#3b9bb0', 86400 * 4)],
+      behavior: [
+        pack('behavior', 'shared', 'Mob intelligenti', 'Mob più intelligenti', 'Comportamenti nuovi per zombie e scheletri', '1.4.0', '#b0563b', 86400 * 6),
+        pack('behavior', 'shared', 'Mobili moderni', 'Mobili moderni', 'Sedie, tavoli e lampade', '2.0.3', '#3b7bb0', 86400 * 3),
+      ],
+      skin: [],
+      world: [
+        pack('world', 'user', 'Ab3dEfGhIk0', 'Isola dei pirati', '', null, '#4f8a3b', 86400 * 2),
+        pack('world', 'user', 'Zx9yWvUtSr1', 'Creativa', '', null, '#8a7a3b', 86400 * 12),
+      ],
+      template: [],
+    };
+    bedrockPacks.set(name, packs);
+  }
+  return packs;
+}
+
 function mockBackups(key: string, count = 3): BackupInfo[] {
   if (!backups.has(key)) {
     backups.set(key, Array.from({ length: count }, (_, i) => ({ file: `${now() - 21600 * (i + 1)}-auto.zip`, created: now() - 21600 * (i + 1), sizeBytes: 140_000_000 - i * 1_000_000, auto: i < 2 })));
@@ -527,11 +564,30 @@ const commands: Record<string, (args: Record<string, any>) => unknown> = {
   },
   list_instances: () => structuredClone(state.instances),
   create_instance: ({ input }) => {
+    if (input.edition === 'bedrock') {
+      const inst = { name: input.name || 'Bedrock', version: '1.21.130', loader: null, created: now(), lastPlayed: null, playtimeSecs: 0, memoryMb: null, javaPath: null, jvmArgs: [], syncSettings: true, icon: null, edition: 'bedrock' as const };
+      state.instances.push(inst);
+      return structuredClone(inst);
+    }
     const loader = input.loader === 'fabric' ? { kind: 'fabric' as const, name: 'Fabric', version: '0.20.1' } : null;
-    const inst = { name: input.name || `${loader ? 'Fabric' : 'Minecraft'} ${input.version}`, version: input.version, loader, created: now(), lastPlayed: null, playtimeSecs: 0, memoryMb: null, javaPath: null, jvmArgs: [], syncSettings: true, icon: null };
+    const inst = { name: input.name || `${loader ? 'Fabric' : 'Minecraft'} ${input.version}`, version: input.version, loader, created: now(), lastPlayed: null, playtimeSecs: 0, memoryMb: null, javaPath: null, jvmArgs: [], syncSettings: true, icon: null, edition: 'java' as const };
     state.instances.push(inst);
     return structuredClone(inst);
   },
+  // Bedrock simulato: installato, con una installazione attiva e qualche pacchetto.
+  bedrock_status: () => ({ installed: true, version: '1.21.130', active: 'Bedrock', profile: true, running: false }),
+  bedrock_packs: ({ name, kind }) => structuredClone(mockBedrockPacks(name)[kind as BedrockKind] ?? []),
+  bedrock_import: async ({ name }) => {
+    await new Promise((r) => setTimeout(r, 700));
+    const pack: BedrockPack = { kind: 'behavior', scope: 'shared', folder: 'Piu minerali', name: 'Più minerali', description: 'Rame, argento e piombo nelle grotte', version: '0.9.1', uuid: 'c3', icon: mockPackIcon('#7a3bb0'), modified: now() };
+    mockBedrockPacks(name).behavior.push(pack);
+    return [{ kind: 'behavior', name: pack.name, replaced: false }];
+  },
+  bedrock_delete: ({ name, kind, folder }) => {
+    const packs = mockBedrockPacks(name);
+    packs[kind as BedrockKind] = packs[kind as BedrockKind].filter((p) => p.folder !== folder);
+  },
+  bedrock_open_folder: () => undefined,
   update_instance: ({ name, settings }) => {
     const inst = state.instances.find((i) => i.name === name)!;
     Object.assign(inst, { memoryMb: settings.memoryMb, javaPath: settings.javaPath, jvmArgs: settings.jvmArgs.split(/\s+/).filter(Boolean), syncSettings: settings.syncSettings });
@@ -600,7 +656,7 @@ const commands: Record<string, (args: Record<string, any>) => unknown> = {
   },
   pack_install: async () => {
     await simulateDownload('', 4);
-    const inst = { name: 'Fabulously Optimized', version: '26.3', loader: { kind: 'fabric' as const, name: 'Fabric', version: '0.20.1' }, created: now(), lastPlayed: null, playtimeSecs: 0, memoryMb: null, javaPath: null, jvmArgs: [], syncSettings: true, icon: null };
+    const inst = { name: 'Fabulously Optimized', version: '26.3', loader: { kind: 'fabric' as const, name: 'Fabric', version: '0.20.1' }, created: now(), lastPlayed: null, playtimeSecs: 0, memoryMb: null, javaPath: null, jvmArgs: [], syncSettings: true, icon: null, edition: 'java' as const };
     state.instances.push(inst);
     return structuredClone(inst);
   },
@@ -614,7 +670,7 @@ const commands: Record<string, (args: Record<string, any>) => unknown> = {
   cf_install: async ({ instance }) => { await simulateDownload(instance, 2); return 2; },
   cf_pack_install: async () => {
     await simulateDownload('', 4);
-    const inst = { name: 'Pack CurseForge', version: '26.2', loader: { kind: 'fabric' as const, name: 'Fabric', version: '0.20.1' }, created: now(), lastPlayed: null, playtimeSecs: 0, memoryMb: null, javaPath: null, jvmArgs: [], syncSettings: true, icon: null };
+    const inst = { name: 'Pack CurseForge', version: '26.2', loader: { kind: 'fabric' as const, name: 'Fabric', version: '0.20.1' }, created: now(), lastPlayed: null, playtimeSecs: 0, memoryMb: null, javaPath: null, jvmArgs: [], syncSettings: true, icon: null, edition: 'java' as const };
     state.instances.push(inst);
     return { instance: structuredClone(inst), blocked: [{ name: 'Entity Culling', fileName: 'entityculling-fabric-1.11.3.jar', url: 'https://www.curseforge.com/minecraft/mc-mods/entityculling' }] };
   },

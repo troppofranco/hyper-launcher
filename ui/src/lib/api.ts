@@ -20,7 +20,22 @@ export interface Instance {
   syncSettings: boolean;
   /** Immagine scelta dall'utente (data: URL). */
   icon: string | null;
+  edition: Edition;
 }
+export type Edition = 'java' | 'bedrock';
+export interface BedrockStatus {
+  installed: boolean; version: string | null;
+  /** Installazione i cui dati sono ora nelle cartelle del gioco. */
+  active: string | null;
+  /** false finché il gioco non ha creato la cartella del profilo Xbox. */
+  profile: boolean; running: boolean;
+}
+export type BedrockKind = 'resource' | 'behavior' | 'skin' | 'world' | 'template';
+export interface BedrockPack {
+  kind: BedrockKind; scope: 'shared' | 'user'; folder: string; name: string; description: string;
+  version: string | null; uuid: string | null; icon: string | null; modified: number;
+}
+export interface BedrockImported { kind: BedrockKind; name: string; replaced: boolean }
 export interface Skin { id: string; name: string; slim: boolean; image: string }
 export interface Skins { skins: Skin[]; selected: string | null; offline: boolean }
 export interface SavedServer { name: string; address: string; icon: string | null; instances: string[] }
@@ -146,7 +161,7 @@ export function on<K extends keyof Events>(event: K, handler: (payload: Events[K
 export const api = {
   appInfo: () => call<AppInfo>('app_info'),
   listInstances: () => call<Instance[]>('list_instances'),
-  createInstance: (input: { name: string; version: string; loader: LoaderKind | null }) =>
+  createInstance: (input: { name: string; version: string; loader: LoaderKind | null; edition?: Edition }) =>
     call<Instance>('create_instance', { input }),
   updateInstance: (name: string, settings: InstanceSettings) => call<Instance>('update_instance', { name, settings }),
   deleteInstance: (name: string) => call<void>('delete_instance', { name }),
@@ -184,6 +199,13 @@ export const api = {
   cfPackInstall: (id: number) => call<PackImport>('cf_pack_install', { id }),
   packExport: (instance: string) => call<ExportResult | null>('pack_export', { instance }),
   listWorlds: (name: string) => call<World[]>('list_worlds', { name }),
+  bedrockStatus: () => call<BedrockStatus>('bedrock_status'),
+  bedrockPacks: (name: string, kind: BedrockKind) => call<BedrockPack[]>('bedrock_packs', { name, kind }),
+  /** Senza percorsi apre il selettore dei file. */
+  bedrockImport: (name: string, paths: string[] | null = null) => call<BedrockImported[]>('bedrock_import', { name, paths }),
+  bedrockDelete: (name: string, pack: BedrockPack) =>
+    call<void>('bedrock_delete', { name, kind: pack.kind, scope: pack.scope, folder: pack.folder }),
+  bedrockOpenFolder: (name: string, kind: BedrockKind) => call<void>('bedrock_open_folder', { name, kind }),
   setInstanceIcon: (name: string, png: string | null) => call<Instance>('set_instance_icon', { name, png }),
   /** Texture di alcuni blocchi dal gioco già scaricato (vuoto se nessuno). */
   blockIcons: () => call<{ name: string; image: string }[]>('block_icons'),

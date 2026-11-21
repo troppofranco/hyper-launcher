@@ -84,16 +84,38 @@ fn world_dirs(state: &AppState, name: &str, world: &str) -> CmdResult<(PathBuf, 
         .join("instances")
         .join(safe_component(name).cmd()?)
         .join(world);
-    Ok((dir, instance.saves_dir()))
+    let saves = if instance.is_bedrock() {
+        // Bedrock ha mondi sia nel profilo Xbox sia nella cartella condivisa:
+        // vale quella che contiene il mondo (il profilo se non c'è ancora).
+        let location = crate::bedrock::location(state, &instance)?;
+        let folders: Vec<PathBuf> = [hyper_bedrock::Scope::User, hyper_bedrock::Scope::Shared]
+            .into_iter()
+            .filter_map(|scope| location.folder(scope, "minecraftWorlds"))
+            .collect();
+        folders
+            .iter()
+            .find(|f| f.join(world).is_dir())
+            .or_else(|| folders.first())
+            .cloned()
+            .ok_or("Apri Minecraft Bedrock una volta, poi riprova.")?
+    } else {
+        instance.saves_dir()
+    };
+    Ok((dir, saves))
 }
 
 /// A gioco aperto il mondo cambia mentre lo si copia: niente backup né
-/// ripristini finché l'istanza è in uso.
-fn ensure_closed(state: &AppState, name: &str) -> CmdResult<()> {
+/// ripristini finché l'istanza è in uso. Per Bedrock la guardia restituita
+/// impedisce che un avvio scambi le cartelle a metà operazione.
+fn ensure_closed(state: &AppState, name: &str) -> CmdResult<Option<crate::bedrock::EditGuard>> {
     if state.is_busy(name) {
         return Err("Chiudi il gioco prima di fare o ripristinare un backup del mondo.".into());
     }
-    Ok(())
+    let instance = state.instances().load(name).cmd()?;
+    if instance.is_bedrock() {
+        return Ok(Some(crate::bedrock::ensure_editable(state, &instance)?.1));
+    }
+    Ok(None)
 }
 
 #[tauri::command]
@@ -112,7 +134,7 @@ pub async fn world_backup(
     name: String,
     world: String,
 ) -> CmdResult<BackupInfo> {
-    ensure_closed(&state, &name)?;
+    let _guard = ensure_closed(&state, &name)?;
     let (dir, saves) = world_dirs(&state, &name, &world)?;
     if !saves.join(&world).join("level.dat").is_file() {
         return Err("Mondo non trovato.".into());
@@ -133,7 +155,7 @@ pub async fn world_backup_restore(
     world: String,
     file: String,
 ) -> CmdResult<()> {
-    ensure_closed(&state, &name)?;
+    let _guard = ensure_closed(&state, &name)?;
     let (dir, saves) = world_dirs(&state, &name, &world)?;
     tauri::async_runtime::spawn_blocking(move || {
         backups::restore(&dir, &file, &saves, &[world])
